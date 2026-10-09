@@ -123,8 +123,10 @@ import urllib.request
 
 repo=os.environ["GITHUB_REPO"]
 token=os.environ["GITHUB_TOKEN"]
+# نکته: گیت‌هاب secret با نام GITHUB_ نمی‌پذیرد؛ GITHUB_TOKEN را خود اکشن‌ها می‌سازند
+# و GITHUB_REPO در workflow به github.repository سقوط می‌کند.
 names=[
-    "BOT_TOKEN","ADMIN_IDS","CHANNEL_ID","GROUP_ID","GITHUB_TOKEN","GITHUB_REPO",
+    "BOT_TOKEN","ADMIN_IDS","CHANNEL_ID","GROUP_ID",
     "CLOUDFLARE_API_TOKEN","CLOUDFLARE_ACCOUNT_ID","KV_NAMESPACE_ID","WORKER_URL","BOT_USERNAME"
 ]
 if os.environ.get("WORKER_SECRET"):
@@ -170,9 +172,6 @@ for name in names:
     }
     status, body=call(base+"/"+name, "PUT", payload)
     if status not in {201, 204}:
-        if name == "GITHUB_TOKEN" and status == 422:
-            print("GITHUB_TOKEN داخلی Actions است و نیاز به ساخت secret جدا ندارد.")
-            continue
         raise SystemExit(f"ثبت secret {name} ناموفق بود: HTTP {status}")
     print(f"secret ثبت شد: {name}")
 PY
@@ -180,12 +179,11 @@ then
   :
 elif command -v gh >/dev/null 2>&1; then
   echo "libsodium پیدا نشد؛ استفاده از GitHub CLI"
-  secret_keys=(BOT_TOKEN ADMIN_IDS CHANNEL_ID GROUP_ID GITHUB_REPO CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID KV_NAMESPACE_ID WORKER_URL BOT_USERNAME)
+  secret_keys=(BOT_TOKEN ADMIN_IDS CHANNEL_ID GROUP_ID CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID KV_NAMESPACE_ID WORKER_URL BOT_USERNAME)
   if [[ -n "${WORKER_SECRET:-}" ]]; then secret_keys+=(WORKER_SECRET); fi
   for key in "${secret_keys[@]}"; do
     printf '%s' "${!key}" | GH_TOKEN="$GITHUB_TOKEN" gh secret set "$key" --repo "$GITHUB_REPO" --body -
   done
-  echo "GITHUB_TOKEN داخلی Actions است."
 else
   echo "برای ثبت secrets، libsodium یا GitHub CLI لازم است." >&2
   exit 1

@@ -41,7 +41,7 @@
 | GROUP_ID | ‎-1003793302941 (گروه @IRvasl) |
 | BOT_USERNAME | ConfigBoostbot |
 | GITHUB_REPO | alirezaghta-cpu/config-boost-bot |
-| GITHUB_TOKEN | توکن دسترسی مخزن — در .env و secret گیت‌هاب |
+| GITHUB_TOKEN | توکن دسترسی مخزن — فقط در .env اجرای محلی؛ در اکشن‌ها GitHub خودش توکن موقت می‌دهد و secret با نام GITHUB_ نمی‌پذیرد |
 | CLOUDFLARE_API_TOKEN | توکن حداقل‌دسترسی کلودفللر — در .env و secret گیت‌هاب |
 | CLOUDFLARE_ACCOUNT_ID | شناسهٔ اکانت کلودفللر — در .env و secret گیت‌هاب |
 | KV_NAMESPACE_ID | شناسهٔ namespace که bootstrap می‌سازد یا دستی ثبت می‌کنید |
@@ -80,7 +80,7 @@ npx wrangler deploy worker/tcp-test.js --name config-boost-tcp-test --compatibil
 ## گام ۴ — secretهای گیت‌هاب و اکشن‌ها
 
 در Settings ← Secrets and variables ← Actions این کلیدها را بسازید:
-BOT_TOKEN، ADMIN_IDS، CHANNEL_ID، GROUP_ID، GITHUB_REPO، CLOUDFLARE_API_TOKEN، CLOUDFLARE_ACCOUNT_ID، KV_NAMESPACE_ID، WORKER_URL، WORKER_SECRET (اختیاری).
+BOT_TOKEN، ADMIN_IDS، CHANNEL_ID، GROUP_ID، CLOUDFLARE_API_TOKEN، CLOUDFLARE_ACCOUNT_ID، KV_NAMESPACE_ID، WORKER_URL، WORKER_SECRET (اختیاری). توجه: گیت‌هاب secret با نام GITHUB_ نمی‌پذیرد؛ GITHUB_REPO در اکشن‌ها خودکار به github.repository سقوط می‌کند و GITHUB_TOKEN را هم خود اکشن‌ها می‌سازند.
 
 دو اکشن فعال می‌شوند:
 
@@ -91,7 +91,7 @@ BOT_TOKEN، ADMIN_IDS، CHANNEL_ID، GROUP_ID، GITHUB_REPO، CLOUDFLARE_API_TOK
 
 ```bash
 ./scripts/bootstrap.sh .env
-``
+```
 
 اسکریپت: توکن ربات، کلید کلودفللر و توکن گیت‌هاب را اعتبارسنجی می‌کند؛ در صورت خالی بودن KV namespace می‌سازد؛ ادمین بودن ربات در کانال و گروه را چک می‌کند؛ secretهای گیت‌هاب را ثبت می‌کند؛ و در صورت وجود npx ورکر را مستقر می‌کند. توکن‌ها در خروجی همیشه ماسک می‌شوند.
 
@@ -101,6 +101,7 @@ BOT_TOKEN، ADMIN_IDS، CHANNEL_ID، GROUP_ID، GITHUB_REPO، CLOUDFLARE_API_TOK
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python -m bot.main
+```
 
 ربات ۲۴ ساعته به یک هاست رایگان نیاز دارد (مثلاً Oracle Cloud Always Free). تا زمانی که هاست مشخص نشده، اجرای محلی برای تست کافی است.
 
@@ -109,6 +110,7 @@ python -m bot.main
 ```bash
 pip install -r requirements.txt
 pytest tests/ -q
+```
 
 تست‌ها: جدول فرمول سهمیه (۰→۱، ۱→۱، ۲→۲، ۳→۲، ۴→۳)، مرز شنبهٔ تهران، معتبر شدن زیرمجموعه فقط با اولین مصرف، خوددعوتی، اولین دعوت‌کننده برای همیشه، سقف ۱۰ دعوت در روز و ماسک secret.
 
