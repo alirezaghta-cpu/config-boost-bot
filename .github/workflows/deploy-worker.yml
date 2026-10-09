@@ -1,0 +1,61 @@
+name: Deploy Cloudflare Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      workSecret:
+        description: Shared secret for the TCP-test worker
+        required: true
+      pat:
+        description: GitHub PAT used only to register repo secrets
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy TCP tester to Cloudflare Workers
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          curl -sS -X PUT "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/workers/scripts/config-boost-test"             -H "Authorization: Bearer ${CF_TOKEN}"             -F 'metadata={"main_module":"tcp-test.js","compatibility_date":"2024-11-01"};type=application/json'             -F 'tcp-test.js=@worker/tcp-test.js;type=application/javascript' > /tmp/deploy.json
+          cat /tmp/deploy.json
+          python3 -c "import json,sys; d=json.load(open('/tmp/deploy.json')); sys.exit(0 if d.get('success') else 1)"
+
+      - name: Set WORKER_SECRET on the Worker
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WS: ${{ inputs.workSecret }}
+        run: |
+          set -euo pipefail
+          curl -sS -X PUT "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/workers/scripts/config-boost-test/secrets"             -H "Authorization: Bearer ${CF_TOKEN}"             -H "Content-Type: application/json"             -d "$(python3 -c "import json,os; print(json.dumps({'name':'WORKER_SECRET','text':os.environ['WS'],'type':'secret_text'}))")" > /tmp/sec.json
+          cat /tmp/sec.json
+          python3 -c "import json,sys; d=json.load(open('/tmp/sec.json')); sys.exit(0 if d.get('success') else 1)"
+
+      - name: Health check
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5 6; do
+            sleep 3
+            out=$(curl -sS https://config-boost-test.configboost.workers.dev/health || true)
+            echo "attempt $i: $out"
+            echo "$out" | grep -q '"ok":true' && exit 0
+          done
+          exit 1
+
+      - name: Register repo secrets
+        env:
+          GH_TOKEN: ${{ inputs.pat }}
+          WS: ${{ inputs.workSecret }}
+        run: |
+          set -uo pipefail
+          echo "::add-mask::${GH_TOKEN}"
+          R="${{ github.repository }}"
+          gh secret set WORKER_SECRET --body "$WS" -R "$R"
+          gh secret set WORKER_URL --body "https://config-boost-test.configboost.workers.dev" -R "$R"
+          gh secret set KV_NAMESPACE_ID --body "2cbd1ab46bd942809c89592830a94719" -R "$R"
