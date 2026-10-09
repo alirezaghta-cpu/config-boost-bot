@@ -9,17 +9,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Refuse to deploy without WORKER_SECRET
+        env:
+          WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WORKER_SECRET}" ]; then
+            echo "::error::Repo secret WORKER_SECRET is not registered. Register it in Settings > Secrets and variables > Actions before deploying; otherwise the /test endpoint would be deployed without authentication."
+            exit 1
+          fi
+
       - name: Deploy TCP tester to Cloudflare Workers
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
         run: |
           set -euo pipefail
-          curl -sS -X PUT "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/workers/scripts/config-boost-test" \
-            -H "Authorization: Bearer ${CF_TOKEN}" \
-            -F 'metadata={"main_module":"tcp-test.js","compatibility_date":"2024-11-01"}' \
-            -F 'tcp-test.js=@worker/tcp-test.js;type=application/javascript+module' > /tmp/deploy.json
-          cat /tmp/deploy.json
+          python3 - <<'PY'
+          import json, os
+          meta = {
+              "main_module": "tcp-test.js",
+              "compatibility_date": "2024-11-01",
+              "secrets": [
+                  {"name": "WORKER_SECRET", "type": "secret_text", "data": os.environ["WORKER_SECRET"]}
+              ],
+          }
+          with open("/tmp/metadata.json", "w", encoding="utf-8") as fh:
+              json.dump(meta, fh)
+          PY
+          curl -sS -X PUT "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/workers/scripts/config-boost-test"             -H "Authorization: Bearer ${CF_TOKEN}"             -F 'metadata=@/tmp/metadata.json;type=application/json'             -F 'tcp-test.js=@worker/tcp-test.js;type=application/javascript+module' > /tmp/deploy.json
           python3 -c "import json,sys; d=json.load(open('/tmp/deploy.json')); sys.exit(0 if d.get('success') else 1)"
 
       - name: Health check
