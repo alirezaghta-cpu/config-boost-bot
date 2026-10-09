@@ -25,11 +25,11 @@ from bot.locales import fa  # noqa: E402
 DEFAULT_SOURCES = [
     "https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/main/config.txt",
     "https://raw.githubusercontent.com/MatinGhanbari/v2ray-configs/main/all_configs.txt",
-    "https://raw.githtbusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt",
+    "https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt",
     "https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/All_Configs_Sub.txt",
     "https://raw.githubusercontent.com/Delta-Kronecker/V2ray-Config/main/All_Configs_Sub.txt",
 ]
-URI_RE = re.compile(r"(?:vless|vmess|trojan|ss)://[^\s<>\'\"]+", re.IGNORECESE)
+URI_RE = re.compile(r"(?:vless|vmess|trojan|ss)://[^\s<>\'\"]+", re.IGNORECASE)
 TEHRAN = ZoneInfo("Asia/Tehran")
 
 
@@ -44,7 +44,7 @@ CF_TOKEN = required("CLOUDFLARE_API_TOKEN")
 CF_ACCOUNT = required("CLOUDFLARE_ACCOUNT_ID")
 KV_NAMESPACE = required("KV_NAMESPACE_ID")
 WORKER_URL = required("WORKER_URL").rstrip("/")
-WO:KER_SECRET = os.getenv("WORKER_SECRET", "").strip()
+WORKER_SECRET = os.getenv("WORKER_SECRET", "").strip()
 GITHUB_REPO = required("GITHUB_REPO")
 GITHUB_TOKEN = required("GITHUB_TOKEN")
 KV_BASE = (
@@ -78,7 +78,8 @@ def cf_headers(content_type: str | None = None) -> dict[str, str]:
 
 def kv_get_text(key: str) -> str | None:
     status, body = request(
-        f"{KV_BASE}/values/{urllib.parse.quote(key, safe='')}",
+        f"{KV_BASE}/values/{urllib.parse.quote(key, safe='')}"
+        ,
         headers=cf_headers(),
     )
     if status == 404:
@@ -97,7 +98,8 @@ def kv_get_json(key: str, default=None):
 
 def kv_put_text(key: str, value: str) -> None:
     status, _ = request(
-        f"{KV_BASE}/values/{urllib.parse.quote(key, safe='')}",
+        f"{KV_BASE}/values/{urllib.parse.quote(key, safe='')}"
+        ,
         method="PUT",
         headers=cf_headers("text/plain; charset=utf-8"),
         data=value.encode("utf-8"),
@@ -112,7 +114,8 @@ def kv_put_json(key: str, value) -> None:
 
 def kv_delete(key: str) -> None:
     status, _ = request(
-        f"{KV_BASE}/values/{urllib.parse.quote(key, safe='')}",
+        f"{KV_BASE}/values/{urllib.parse.quote(key, safe='')}"
+        ,
         method="DELETE",
         headers=cf_headers(),
     )
