@@ -1,185 +1,139 @@
-# ConfigBoost — Free v2ray Config Telegram Bot (Phase 1)
+# ربات Config Boost — توزیع کانفیگ با سهمیهٔ هفتگی
 
-A lightweight, single-process Telegram bot that distributes free v2ray
-configs. Phase 1 covers language selection, an inline main menu, server
-listing, TCP latency testing, a "my servers" placeholder, refresh,
-channel link, guide, and a few "coming soon" buttons.
+ربات تلگرامی فارسی برای توزیع کانفیگ‌های تست‌شده با قانون سهمیهٔ هفتگی، رفرال، ضد اسپم و پست خودکار کانال. کل زیرساخت رایگان است: تلگرام، گیت‌هاب اکشن، کلودفلر ورکر و کلودفلر KV.
 
-Server data is collected by an external **n8n** workflow that periodically
-fetches free configs from public GitHub repositories and writes them to
-`data/servers.json`. This bot only reads that file and reacts to user
-input — it does not crawl the internet itself.
+## امکانات
 
----
+- دریافت کانفیگ با سهمیهٔ هفتگی (شنبه ۰۰:۰۰ تهران ریست می‌شود)
+- قانون رفرال: هر ۲ زیرمجموعهٔ معتبر = ۱ کانفیگ اضافه در همان هفته
+- کارت تست و لوکیشن: سلامت TCP، IP، کشور/شهر، ISP، پینگ و زمان تست به شمسی
+- دکمه‌های «تست و لوکیشن»، «کپی کانفیگ» و «QR»
+- پست خودکار هفتگی کانال و گروه (جمعه ۱۸:۰۰ تهران) با تست مجدد قبل از ارسال
+- پنل ادمین: وضعیت، ارسال دستی، بازهٔ ارسال، منابع، افزودن کانفیگ، سهمیه و رفرال کاربران
+- محدودیت نرخ: ۳ تست در روز، ۲ پیام پشتیبانی در ساعت، ۱۵ عمل در دقیقه
 
-## Features (Phase 1)
+## معماری
 
-- 🇮🇷 / 🇬🇧 Bilingual UI (Persian + English); no mixed languages in one message
-- 🚀 Inline main menu with emoji-rich buttons
-- 📡 Server list read from `data/servers.json`
-- ⚡ TCP-connect latency test with a 3s timeout
-- 👤 "My Servers" empty-state placeholder (Phase 2 hook)
-- 🔄 Refresh re-reads `data/servers.json` from disk
-- 📢 Channel button using `data/channel.json`
-- 📖 Guide for v2rayNG, NekoBox, v2rayN, Nekoray, Streisand, V2Box, V2RayXS
-- 🚧 "Soon" placeholders for referral, subscription, and admin panel
-- 🛠️ `/admin` command restricted to user IDs in `ADMIN_IDS`
+| نقش | سرویس |
+|---|---|
+| ربات، کانال، گروه | Telegram Bot API (aiogram 3.x، Python 3.12) |
+| زمان‌بندی هفتگی و بروزرسانی منابع | GitHub Actions |
+| تست TCP کانفیگ‌ها | Cloudflare Worker (worker/tcp-test.js) |
+| ذخیره‌سازی کاربران، سهمیه و کانفیگ‌ها | Cloudflare KV |
+| فایل ساب عمومی | data/subscription.txt (لینک raw همین مخزن) |
 
----
+## سقف‌های رایگان
 
-## Project Layout
+| سرویس | سقف رایگان |
+|---|---|
+| GitHub Actions | ۲۰۰۰ دقیقه در ماه (برای cron کافی است) |
+| Cloudflare Workers | ۱۰۰ هزار درخواست در روز |
+| Cloudflare KV | ۱۰۰ هزار خواندن و ۱۰۰ هزار نوشتن در روز |
+| تلگرام | بدون سقف رسمی؛ ربات با rate limit خودش مدیریت می‌شود |
 
-```
-.
-├── README.md
-├── bot/
-│   ├── main.py             # bot entry point
-│   ├── i18n.py             # Persian + English strings
-│   └── data_sources.py     # JSON I/O for ./data
-├── data/                   # created automatically on first run
-│   ├── servers.json        # written by n8n
-│   ├── channel.json        # written by n8n
-│   └── users.json          # written by the bot
-```
+## نقشه کلیدها
 
-> The `bot` package works as a PEP 420 *namespace package* (no
-> `__init__.py` required) when launched with `python -m bot.main`. If
-> you prefer a regular package, add an empty `bot/__init__.py`.
+| کلید | مقدار/محل قرارگیری |
+|---|---|
+| BOT_TOKEN | توکن @BotFather — در .env و secret گیت‌هاب |
+| ADMIN_IDS | آیدی عددی ادمین‌ها، جداشده با کاما — در .env و secret گیت‌هاب |
+| CHANNEL_ID | ‎-1001686062564 (کانال @GalaxiesDrop) |
+| GROUP_ID | ‎-1003793302941 (گروه @IRvasl) |
+| BOT_USERNAME | ConfigBoostbot |
+| GITHUB_REPO | alirezaghta-cpu/config-boost-bot |
+| GITHUB_TOKEN | توکن دسترسی مخزن — در .env و secret گیت‌هاب |
+| CLOUDFLARE_API_TOKEN | توکن حداقل‌دسترسی کلودفللر — در .env و secret گیت‌هاب |
+| CLOUDFLARE_ACCOUNT_ID | شناسهٔ اکانت کلودفللر — در .env و secret گیت‌هاب |
+| KV_NAMESPACE_ID | شناسهٔ namespace که bootstrap می‌سازد یا دستی ثبت می‌کنید |
+| WORKER_URL | آدرس استقرار Worker مثل https://config-boost-tcp-test.PROJECT.workers.dev |
+| WORKER_SECRET | اختیاری؛ اگر ست شد Worker فقط با هدر X-Worker-Secret جواب می‌دهد |
 
----
+## گام ۱ — ساخت ربات و دسترسی‌ها
 
-## Requirements
+1. در تلگرام به @BotFather بروید و /newbot بزنید؛ توکن را در BOT_TOKEN بگذارید.
+2. ربات را در کانال @GalaxiesDrop و گروه @IRvasl ادمین کنید (فقط «ارسال پیام» کافی است).
+3. آیدی عددی خودتان را از @userinfobot بگیرید و در ADMIN_IDS بگذارید.
 
-- Python 3.10+
-- A Telegram bot token from [@BotFather](https://t.me/BotFather)
-
----
-
-## Environment Variables
-
-| Variable     | Required | Description                                                            |
-|--------------|----------|------------------------------------------------------------------------|
-| `BOT_TOKEN`  | **yes**  | Telegram bot token from @BotFather                                     |
-| `ADMIN_IDS`  | no       | Comma-separated Telegram user IDs allowed to use `/admin`             |
-| `DATA_DIR`   | no       | Override the `./data` folder (default: project root `./data`)         |
-| `LOG_LEVEL`  | no       | Python logging level, e.g. `INFO`, `DEBUG` (default `INFO`)           |
-
-> The bot **never** hardcodes tokens or secrets. `BOT_TOKEN` must be
-> provided via the environment.
-
----
-
-## Install & Run
+## گام ۲ — فایل .env
 
 ```bash
-# 1. clone
-git clone https://github.com/alirezaghta-cpu/config-boost-bot.git
-cd config-boost-bot
+cp .env.example .env
+# مقادیر واقعی را در .env وارد کنید؛ .env هرگز کامیت نمی‌شود (.gitignore)
+```
 
-# 2. virtualenv
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+اگر کلیدی خالی باشد، ربات با پیام فارسی «کلید گمشده: NAME» خارج می‌شود (بدون traceback).
 
-# 3. install
-pip install -r bot/requirements.txt
+## گام ۳ — کلودفللر
 
-# 4. configure
-export BOT_TOKEN="<paste-from-botfather>"
-export ADMIN_IDS="11111111,22222222"   # optional
+1. در dashboard کلودفللر یک API Token بسازید با حداقل دسترسی: Account Read، Workers Scripts Edit، KV Storage Edit.
+2. شناسهٔ اکانت را از صفحهٔ Home بگیرید و در CLOUDFLARE_ACCOUNT_ID بگذارید.
+3. یک KV namespace بسازید (عنوان پیشنهادی: config-boost-bot) و شناسهٔ آن را در KV_NAMESPACE_ID بگذارید — یا اجازه دهید scripts/bootstrap.sh خودش بسازد.
+4. Worker را مستقر کنید:
 
-# 5. run (long polling, single process)
+```bash
+npx wrangler deploy worker/tcp-test.js --name config-boost-tcp-test --compatibility-date 2024-11-01
+# آدرس Workers.dev ساخته‌شده را در WORKER_URL بگذارید
+```
+
+نکته: اگر WORKER_SECRET ست کردید، همان مقدار را در WORKER_SECRET ربات و اکشن‌ها هم بگذارید.
+
+## گام ۴ — secretهای گیت‌هاب و اکشن‌ها
+
+در Settings ← Secrets and variables ← Actions این کلیدها را بسازید:
+BOT_TOKEN، ADMIN_IDS، CHANNEL_ID، GROUP_ID، GITHUB_REPO، CLOUDFLARE_API_TOKEN، CLOUDFLARE_ACCOUNT_ID، KV_NAMESPACE_ID، WORKER_URL، WORKER_SECRET (اختیاری).
+
+دو اکشن فعال می‌شوند:
+
+- refresh-sources.yml: هر ۶ ساعت منابع را می‌گیرد، تست می‌کند، فهرست سالم را در KV و فایل ساب را در data/subscription.txt به‌روز می‌کند.
+- weekly-post.yml: جمعه ۱۴:۳۰ UTC (۱۸:۰۰ تهران) یک کانفیگ سالم تست‌شده را در کانال و گروه پست می‌کند. خطای تست یا ارسال فقط به ادمین گزارش می‌شود، هرگز در کانال پست نمی‌شود.
+
+## گام ۵ — راه‌اندازی سریع (bootstrap)
+
+```bash
+./scripts/bootstrap.sh .env
+``
+
+اسکریپت: توکن ربات، کلید کلودفللر و توکن گیت‌هاب را اعتبارسنجی می‌کند؛ در صورت خالی بودن KV namespace می‌سازد؛ ادمین بودن ربات در کانال و گروه را چک می‌کند؛ secretهای گیت‌هاب را ثبت می‌کند؛ و در صورت وجود npx ورکر را مستقر می‌کند. توکن‌ها در خروجی همیشه ماسک می‌شوند.
+
+## گام ۶ — اجرای ربات
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 python -m bot.main
-```
 
-On first start the bot creates `data/servers.json`, `data/channel.json`,
-and `data/users.json` with safe empty defaults. The bot stays usable
-even before n8n has produced any server data.
+ربات ۲۴ ساعته به یک هاست رایگان نیاز دارد (مثلاً Oracle Cloud Always Free). تا زمانی که هاست مشخص نشده، اجرای محلی برای تست کافی است.
 
----
+## گام ۷ — تست‌ها
 
-## Data Files
+```bash
+pip install -r requirements.txt
+pytest tests/ -q
 
-### `data/servers.json` (written by **n8n**)
+تست‌ها: جدول فرمول سهمیه (۰→۱، ۱→۱، ۲→۲، ۳→۲، ۴→۳)، مرز شنبهٔ تهران، معتبر شدن زیرمجموعه فقط با اولین مصرف، خوددعوتی، اولین دعوت‌کننده برای همیشه، سقف ۱۰ دعوت در روز و ماسک secret.
 
-Array of server objects. Any field may be missing; the bot reads
-defensively.
+## قانون سهمیه (خلاصهٔ دقیق)
 
-```json
-[
-  {
-    "id": "srv-001",
-    "name": "Germany-VLESS",
-    "url": "vless://uuid@host:443?type=tcp#Germany-VLESS",
-    "protocol": "vless",
-    "host": "1.2.3.4",
-    "port": 443,
-    "source": "ebrasha/free-v2ray-public-list",
-    "lastCheck": "2025-01-01T00:00:00Z",
-    "alive": true
-  }
-]
-```
+- هر کاربر در هر هفتهٔ تقویمی تهران (شنبه تا جمعه) ۱ کانفیگ پایه دارد.
+- هر ۲ زیرمجموعهٔ معتبر = ۱ کانفیگ اضافه در همان هفته. زیرمجموعه معتبر است که اولین‌بار با لینک شما وارد شده و خودش یک کانفیگ گرفته باشد.
+- فرمول: balance = 1 + (qualified // 2) - used_this_week
+- مصرف هفتهٔ قبل با شنبه صفر می‌شود؛ شمار زیرمجموعه‌های معتبر باقی می‌ماند.
+- دریافت فقط با دکمهٔ «دریافت کانفیگ این هفته» ثبت می‌شود؛ دیدن منو و پست کانال سهمیه کم نمی‌کند.
 
-### `data/channel.json` (written by **n8n**)
+## عیب‌یابی
 
-```json
-{
-  "username": "@ConfigBoost",
-  "link": "https://t.me/ConfigBoost"
-}
-```
+| علامت | علت | راه‌حل |
+|---|---|---|
+| «کلید گمشده: X» | کلیدی در .env نیست | مقدار X را اضافه کنید |
+| Invalid API Token (کلودفللر) | دسترسی توکن ناقص یا توکن اشتباه | توکن جدید با دسترسی‌های گام ۳ بسازید |
+| ربات در مقصد ادمین نیست | ربات ادمین نشده | ربات را در کانال/گروه ادمین کنید |
+| خطای 429 تلگرام | محدودیت نرخ | ربات یک بار تلاش می‌کند؛ بعد گزارش به ادمین می‌دهد |
+| تست کانفیگ timeout | Worker خاموش یا WORKER_URL اشتباه | استقرار Worker و آدرس Workers.dev را چک کنید |
+| اکشن اجرا نشد | Actions غیرفعال یا secret ناقص | تب Actions و secretها را بررسی کنید |
+| پست کانال نرفت | تست مجدد ناموفق بود | فقط به ادمین گزارش می‌شود؛ کانال هرگز پیام خطا نمی‌گیرد |
 
-### `data/users.json` (written by **the bot**)
+## امنیت
 
-```json
-{
-  "123456789": {
-    "lang": "fa",
-    "first_seen": "2025-01-01T00:00:00+00:00",
-    "assigned": []
-  }
-}
-```
-
----
-
-## Commands
-
-| Command       | Description                                                  |
-|---------------|--------------------------------------------------------------|
-| `/start`      | Show welcome + language picker                               |
-| `/menu`       | Open the inline main menu                                    |
-| `/lang`       | Change language                                              |
-| `/servers`    | List servers                                                 |
-| `/test`       | Pick a server to TCP-test                                    |
-| `/status`     | Show bot status and server count                             |
-| `/help`       | Show help                                                    |
-| `/ref`        | "Soon" placeholder (referral)                                |
-| `/subscribe`  | "Soon" placeholder (subscription)                            |
-| `/admin`      | Admin panel (only if user id is in `ADMIN_IDS`)             |
-
----
-
-## Suggested free config sources (for n8n)
-
-- `ebrasha/free-v2ray-public-list`
-- `MatinGhanbari/v2ray-configs`
-- `Epodonios/v2ray-configs`
-- `0xRadikal/Free-v2ray-Configs`
-- `Delta-Kronecker/V2ray-Config`
-
-Refresh every 5–15 minutes from the GitHub `raw` endpoints, normalize
-each entry into the `servers.json` schema above, and write atomically.
-
----
-
-## Phase 2 Hooks
-
-- The **My Servers** button currently shows a friendly empty-state
-  message. The user record already has an `assigned: []` field ready to
-  be populated when subscriptions are introduced.
-- **"Soon"** buttons (referral / subscription / admin panel) already
-  route through real callback handlers and can be replaced with full
-  flows without changing the menu layout.
-- The **Test Server** action is a TCP connect with a 3s timeout. A full
-  v2ray handshake test can be added later behind the same callback.
+- هرگز secret را کامیت نکنید؛ .env در .gitignore است.
+- لاگ‌ها با mask_secret ماسک می‌شوند (۸ کاراکتر اول + ****).
+- کانفیگ بدون نتیجهٔ TCP سالم و IP واقعی تحویل یا منتشر نمی‌شود؛ لوکیشن ناموجود هرگز جعل نمی‌شود.

@@ -1,0 +1,4 @@
+aiogram>=3.13
+qrcode[pil]
+jdatetime
+pytest
