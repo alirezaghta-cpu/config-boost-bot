@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import html
+import ipaddress
 import json
 import os
 import random
+import socket
 import sys
 import time
 import urllib.error
@@ -154,25 +156,40 @@ def notify_admin(text: str) -> None:
             return
 
 
+def direct_test(host: str, port: int) -> dict:
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        ip = infos[0][4][0]
+        if not ipaddress.ip_address(ip).is_global:
+            return {"ok": False}
+        started = time.time()
+        with socket.create_connection((ip, port), timeout=8):
+            pass
+        return {"ok": True, "ip": ip, "latency_ms": int((time.time() - started) * 1000)}
+    except Exception:
+        return {"ok": False}
+
+
 def worker_retest(host: str, port: int) -> dict:
     endpoint = WORKER_URL if WORKER_URL.endswith("/test") else f"{WORKER_URL}/test"
     headers = {"Content-Type": "application/json"}
     if WORKER_SECRET:
         headers["X-Worker-Secret"] = WORKER_SECRET
-    status, body = request(
-        endpoint,
-        method="POST",
-        headers=headers,
-        data=json.dumps({"host": host, "port": port}).encode("utf-8"),
-        timeout=10,
-    )
-    if status != 200:
-        return {"ok": False}
     try:
-        payload = json.loads(body)
-        return payload if isinstance(payload, dict) else {"ok": False}
-    except json.JSONDecodeError:
-        return {"ok": False}
+        status, body = request(
+            endpoint,
+            method="POST",
+            headers=headers,
+            data=json.dumps({"host": host, "port": port}).encode("utf-8"),
+            timeout=10,
+        )
+        if status == 200:
+            payload = json.loads(body)
+            if isinstance(payload, dict) and payload.get("ok"):
+                return payload
+    except Exception:
+        pass
+    return direct_test(host, port)
 
 
 def channel_buttons(config_id: str) -> dict:

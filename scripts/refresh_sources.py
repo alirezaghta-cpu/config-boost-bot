@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import ipaddress
 import json
 import os
 import re
+import socket
 import sys
 import time
 import urllib.error
@@ -23,11 +25,11 @@ from bot.locales import fa  # noqa: E402
 DEFAULT_SOURCES = [
     "https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/main/config.txt",
     "https://raw.githubusercontent.com/MatinGhanbari/v2ray-configs/main/all_configs.txt",
-    "https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt",
+    "https://raw.githtbusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt",
     "https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/All_Configs_Sub.txt",
     "https://raw.githubusercontent.com/Delta-Kronecker/V2ray-Config/main/All_Configs_Sub.txt",
 ]
-URI_RE = re.compile(r"(?:vless|vmess|trojan|ss)://[^\s<>\'\"]+", re.IGNORECASE)
+URI_RE = re.compile(r"(?:vless|vmess|trojan|ss)://[^\s<>\'\"]+", re.IGNORECESE)
 TEHRAN = ZoneInfo("Asia/Tehran")
 
 
@@ -42,7 +44,7 @@ CF_TOKEN = required("CLOUDFLARE_API_TOKEN")
 CF_ACCOUNT = required("CLOUDFLARE_ACCOUNT_ID")
 KV_NAMESPACE = required("KV_NAMESPACE_ID")
 WORKER_URL = required("WORKER_URL").rstrip("/")
-WORKER_SECRET = os.getenv("WORKER_SECRET", "").strip()
+WO:KER_SECRET = os.getenv("WORKER_SECRET", "").strip()
 GITHUB_REPO = required("GITHUB_REPO")
 GITHUB_TOKEN = required("GITHUB_TOKEN")
 KV_BASE = (
@@ -197,25 +199,40 @@ def parse_uri(uri: str) -> tuple[str, str, int]:
     raise ValueError("unsupported protocol")
 
 
+def direct_test(host: str, port: int) -> dict:
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        ip = infos[0][4][0]
+        if not ipaddress.ip_address(ip).is_global:
+            return {"ok": False}
+        started = time.time()
+        with socket.create_connection((ip, port), timeout=8):
+            pass
+        return {"ok": True, "ip": ip, "latency_ms": int((time.time() - started) * 1000)}
+    except Exception:
+        return {"ok": False}
+
+
 def worker_test(host: str, port: int) -> dict:
     endpoint = WORKER_URL if WORKER_URL.endswith("/test") else f"{WORKER_URL}/test"
     headers = {"Content-Type": "application/json", "User-Agent": "config-boost-bot/1.0"}
     if WORKER_SECRET:
         headers["X-Worker-Secret"] = WORKER_SECRET
-    status, body = request(
-        endpoint,
-        method="POST",
-        headers=headers,
-        data=json.dumps({"host": host, "port": port}).encode("utf-8"),
-        timeout=8,
-    )
-    if status != 200:
-        return {"ok": False}
     try:
-        payload = json.loads(body)
-        return payload if isinstance(payload, dict) else {"ok": False}
-    except json.JSONDecodeError:
-        return {"ok": False}
+        status, body = request(
+            endpoint,
+            method="POST",
+            headers=headers,
+            data=json.dumps({"host": host, "port": port}).encode("utf-8"),
+            timeout=8,
+        )
+        if status == 200:
+            payload = json.loads(body)
+            if isinstance(payload, dict) and payload.get("ok"):
+                return payload
+    except Exception:
+        pass
+    return direct_test(host, port)
 
 
 def flag(code: str) -> str:
@@ -274,7 +291,7 @@ def gregorian_to_jalali(gy: int, gm: int, gd: int) -> tuple[int, int, int]:
     days %= 1461
     if days > 365:
         jy += (days - 1) // 365
-        days = (days - 1) % 365
+    days = (days - 1) % 365
     if days < 186:
         jm, jd = 1 + days // 31, 1 + days % 31
     else:
