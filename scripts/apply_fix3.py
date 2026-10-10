@@ -1,5 +1,6 @@
 """یک‌بارمصرف: فیکس‌های دروازه عضویت/ارسال ادمین/ساده‌سازی کارت + ساخت HANDOFF واحد.
-هر anchor پیدا نشود، با پیام صریح شکست می‌خورد (چیزی نیمه‌کاره نمی‌ماند)."""
+هر anchor پیدا نشود، با پیام صریح شکست می‌خورد (چیزی نیمه‌کاره نمی‌ماند).
+نکته: قالب‌های حاوی \\n باید raw باشند تا در کد تولیدی escape بماند."""
 from pathlib import Path
 import shutil
 import sys
@@ -134,7 +135,7 @@ async def gate_verify(callback: CallbackQuery, ctx: AppContext) -> None:
 
 '''
 
-ADMIN_SEND_FUNC = '''@router.callback_query(F.data == "admin:send")
+ADMIN_SEND_FUNC = r'''@router.callback_query(F.data == "admin:send")
 async def admin_send_select(callback: CallbackQuery, ctx: AppContext) -> None:
     if not await _admin_callback(callback, ctx):
         return
@@ -173,7 +174,7 @@ async def admin_send_select(callback: CallbackQuery, ctx: AppContext) -> None:
 
 '''
 
-GATE_STRINGS = '''BTN_JOIN = "عضویت"
+GATE_STRINGS = r'''BTN_JOIN = "عضویت"
 BTN_JOIN_CONFIRM = "تایید عضویت"
 GATE_TEXT = (
     "برای استفاده از ربات ابتدا در کانال @GalaxiesDrop عضو شوید.\n\n"
@@ -186,7 +187,7 @@ GATE_OK = "عضویت تأیید شد ✅"
 
 '''
 
-NEW_TEST_CARD = '''def test_card(
+NEW_TEST_CARD = r'''def test_card(
     protocol: str,
     host: str,
     port: int,
@@ -219,7 +220,7 @@ NEW_TEST_CARD = '''def test_card(
 
 '''
 
-NEW_CHANNEL_POST = '''def channel_post(
+NEW_CHANNEL_POST = r'''def channel_post(
     record: dict,
     bot_username: str,
     escaped_uri: str,
