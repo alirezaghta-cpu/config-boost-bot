@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""Surgical patch: Worker-401 fallback in bot/cards.py + robust _manual_post retest in bot/handlers.py + HANDOFF note."""
-
-from __future__ import annotations
-
+"""Apply fix: Worker-401 fallback in cards.tcp_test + robust _manual_post."""
 import py_compile
 import tempfile
 from pathlib import Path
@@ -11,10 +8,9 @@ CARDS = Path("bot/cards.py")
 HANDLERS = Path("bot/handlers.py")
 HANDOFF = Path("HANDOFF.md")
 
-NEW_TCP = '''async def direct_tcp_test(host: str, port: int) - ‚ dict[str, Any]:
-    """تست TCP مستقیم از خود ربات وقتی Worker جواب نمی‌دهد (همان منطق اسکریپت‌ها)."""
-
-    def _run() - ‚ dict[str, Any]:
+NEW_TCP = '''async def direct_tcp_test(host, port):
+    """Direct socket TCP test fallback (same as scripts/)."""
+    def _run():
         try:
             infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
             ip = infos[0][4][0]
@@ -24,21 +20,17 @@ NEW_TCP = '''async def direct_tcp_test(host: str, port: int) - ‚ dict[str, Any
             with socket.create_connection((ip, port), timeout=8):
                 pass
             return {"ok": True, "ip": ip, "latency_ms": int((time.time() - started) * 1000)}
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return {"ok": False, "error": type(exc).__name__}
-
     return await asyncio.to_thread(_run)
 
 
-async def tcp_test(
-    session: aiohttp.ClientSession,
-    settings: Settings,
-    parsed: ParsedConfig,
-) - ‚ dict[str, Any]:
+async def tcp_test(session, settings, parsed):
+    """Worker test with direct socket fallback (WORKER_SECRET mismatch returns 401)."""
     headers = {"Content-Type": "application/json"}
     if settings.worker_secret:
         headers["X-Worker-Secret"] = settings.worker_secret
-    worker_result: dict[str, Any] | None = None
+    worker_result = None
     try:
         async with session.post(
             worker_test_url(settings.worker_url),
@@ -65,7 +57,7 @@ HANDLERS_OLD = '''    _, fresh = await inspect_uri(record["uri"], ctx.settings, 
         )
         return False'''
 
-HANDLERS_NEW = '''    fresh: dict[str, Any] = {}
+HANDLERS_NEW = '''    fresh = {}
     for attempt in range(2):
         try:
             _, fresh = await inspect_uri(record["uri"], ctx.settings, ctx.storage)
@@ -93,53 +85,42 @@ HANDLERS_NEW = '''    fresh: dict[str, Any] = {}
         )
         return False'''
 
-HANDOFF_NOTE = '''
-
-## ۱۵. پست‌مورم: «کانفیگ ارسال نمیشه» (2026-10-10 ~09:07 UTC)
-- **ریشه:** تست مجددِ `_manual_post` در ربات فقط از Worker استفاده می‌کرد؛ Worker به‌خاطر ناهماهنگی `WORKER_SECRET` همیشه 401 می‌داد → `manual_retest_failed` (در `last_error` ثبت شد) → دکمهٔ «وصل شدم — ارسال فوری» و تأیید ارسال هرگز به کانال/گروه نمی‌رسید. اسکریپت‌ها (refresh/force/weekly) سبز بودند چون `direct_test` fallback سوکت مستقیم دارند؛ ربات این fallback را نداشت.
-- **فیکس:** `bot/cards.py` → تابع `direct_tcp_test` (fallback سوکت مستقیم، همان منطق اسکریپت‌ها) داخل `tcp_test`؛ `bot/handlers.py` → در `_manual_post` دو تلاش تست با فاصله و در صورت شکست، استفاده از رکوردِ تازه و سالمِ ذخیره‌شده (کمتر از ۱ ساعت).
-- **درس:** هر مسیر تستِ جدید باید fallback مستقیم داشته باشد؛ Worker دارای secret است و `WORKER_SECRET` ریپو با آن ناهماهنگ است (هماهنگ‌سازی همچنان باز است ولی اکنون الزامی نیست).'''
+HANDOFF_NOTE = "\n\n## 15. Fix: manual send failing (2026-10-10)\n- Root cause: bot re-test called only the Worker; WORKER_SECRET mismatch -> 401 -> manual_retest_failed in last_error -> the admin 'send now' button never posted. Scripts were green because they have direct_test fallback; the bot had none.\n- Fix: direct_tcp_test fallback in bot/cards.py tcp_test + two retries and fresh-record (<1h) fallback in _manual_post (bot/handlers.py).\n- Lesson: every test path needs a direct fallback; aligning WORKER_SECRET with the deployed Worker is now optional, not required.\n"
 
 
-def replace_once(path: Path, old: str, new: str, label: str) -> None:
+def replace_once(path, old, new, label):
     text = path.read_text(encoding="utf-8")
     count = text.count(old)
     if count != 1:
-        raise SystemExit(f"{label}: expected exactly 1 match in {path}, found {count}")
+        raise SystemExit("%s: expected 1 match in %s, found %d" % (label, path, count))
     path.write_text(text.replace(old, new), encoding="utf-8")
-    print(f"{label}: OK")
+    print("%s: OK" % label)
 
 
-def main() -> None:
+def main():
     replace_once(
         CARDS,
         "import base64\nimport json\n",
         "import asyncio\nimport base64\nimport ipaddress\nimport json\nimport socket\nimport time\n",
         "cards-imports",
     )
-
     text = CARDS.read_text(encoding="utf-8")
     start = text.index("async def tcp_test(")
     end_marker = 'return {"ok": False, "error": "worker_unavailable"}'
     end = text.index(end_marker, start) + len(end_marker)
-    text = text[:start] + NEW_TCP + text[end:]
-    CARDS.write_text(text, encoding="utf-8")
+    CARDS.write_text(text[:start] + NEW_TCP + text[end:], encoding="utf-8")
     print("cards-tcp_test: OK")
-
     replace_once(HANDLERS, HANDLERS_OLD, HANDLERS_NEW, "handlers-manual_post")
-
     for path in (CARDS, HANDLERS):
-        with tempfile.NamedTemporaryFile(suffix=".py", delete=False) as tmp:
-            tmp_path = tmp.name
-        py_compile.compile(str(path), cfile=tmp_path, doraise=True)
-        print(f"compile {path}: OK")
-
+        tmp = tempfile.NamedTemporaryFile(suffix=".py", delete=False)
+        tmp.close()
+        py_compile.compile(str(path), cfile=tmp.name, doraise=True)
+        print("compile %s: OK" % path)
     note = HANDOFF.read_text(encoding="utf-8")
-    if "پست‌مورم: «کانفیگ ارسال نمیشه»" not in note:
-        HANDOFF.write_text(note + HANDOFF_NOTE + "\n", encoding="utf-8")
+    if "manual send failing" not in note:
+        HANDOFF.write_text(note + HANDOFF_NOTE, encoding="utf-8")
         print("handoff-note: OK")
-
-    print("PATCH_APPLIED")
+    print("PATCh_APPLIED")
 
 
 if __name__ == "__main__":
