@@ -1,0 +1,33 @@
+name: Apply re-test fallback fix
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-fix
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Apply surgical patch
+        run: python scripts/apply_fix.py
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41498282+github-actions[bot]@users.noreply.github.com"
+          git add bot/cards.py bot/handlers.py HANDOFF.md
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "fix: bot re-test fallback to direct TCP when Worker fails + robust manual post retest"
+            git push origin HEAD:main
+          fi
