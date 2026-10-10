@@ -716,7 +716,7 @@ async def admin_test_config(callback: CallbackQuery, ctx: AppContext) -> None:
     await ctx.storage.mark_admin_test_seen(str(record["id"]))
     await callback.answer()
     await callback.message.answer(
-        f"{fa.ADMIN_TEST_SENT}\n\n{format_test_card(record)}",
+        f"{fa.ADMIN_TEST_SENT}\n\n{format_test_card(record)}\n\n{fa.config_code(escape_code(str(record['uri'])))}",
         reply_markup=_admin_test_keyboard(record),
     )
 
@@ -745,7 +745,7 @@ async def admin_test_fail(callback: CallbackQuery, ctx: AppContext) -> None:
         return
     await ctx.storage.mark_admin_test_seen(str(record["id"]))
     await callback.message.answer(
-        f"{fa.ADMIN_TEST_SENT}\n\n{format_test_card(record)}",
+        f"{fa.ADMIN_TEST_SENT}\n\n{format_test_card(record)}\n\n{fa.config_code(escape_code(str(record['uri'])))}",
         reply_markup=_admin_test_keyboard(record),
     )
 
@@ -906,7 +906,7 @@ async def admin_send_select(callback: CallbackQuery, ctx: AppContext) -> None:
     )
     await callback.answer()
     await callback.message.answer(
-        f"{format_test_card(selected)}\n\n{fa.ADMIN_CONFIRM_SEND}",
+        f"{format_test_card(selected)}\n\n{fa.config_code(escape_code(str(selected['uri'])))}\n\n{fa.ADMIN_CONFIRM_SEND}",
         reply_markup=keyboard,
     )
 
