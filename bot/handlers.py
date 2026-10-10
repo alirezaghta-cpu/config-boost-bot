@@ -4,6 +4,7 @@ import asyncio
 import logging
 import random
 import time
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Awaitable, Callable
@@ -51,6 +52,8 @@ class Flow(StatesGroup):
     admin_quota_lookup = State()
     admin_quota_edit = State()
     admin_ref_lookup = State()
+    admin_testcfg = State()
+    admin_test_send = State()
 
 
 class ActionRateMiddleware(BaseMiddleware):
@@ -98,8 +101,14 @@ def config_keyboard(config_id_value: str) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text=fa.BTN_QR, callback_data=f"cfg:qr:{config_id_value}"),
             ],
             [
-                InlineKeyboardButton(text=fa.BTN_IRAN_OK, callback_data=f"cfg:iran:{config_id_value}:ok"),
-                InlineKeyboardButton(text=fa.BTN_IRAN_FAIL, callback_data=f"cfg:iran:{config_id_value}:fail"),
+                InlineKeyboardButton(
+                    text=fa.BTN_IRAN_VOTE_OK,
+                    callback_data=f"cfg:iran:{config_id_value}:ok",
+                ),
+                InlineKeyboardButton(
+                    text=fa.BTN_IRAN_VOTE_FAIL,
+                    callback_data=f"cfg:iran:{config_id_value}:fail",
+                ),
             ],
         ]
     )
@@ -118,6 +127,29 @@ def channel_keyboard(settings: Settings, config_id_value: str) -> InlineKeyboard
 
 
 PRIORITY_COUNTRIES = ("DE", "FR", "NL", "CA", "US")
+IRAN_TLS_PORTS = {8443, 2053, 2083, 2087, 2096, 80}
+
+
+def _proto_port_score(record: dict) -> int:
+    proto = str(record.get("protocol") or "").lower()
+    sec = str(record.get("security") or "").lower()
+    port = int(record.get("port") or 0)
+    score = 0
+    if proto == "vless" and sec == "reality":
+        score += 60
+    elif proto == "trojan":
+        score += 45
+    elif proto == "vless":
+        score += 35
+    elif proto == "vmess":
+        score += 20
+    else:
+        score += 5
+    if port == 443:
+        score += 25
+    elif port in IRAN_TLS_PORTS:
+        score += 12
+    return score
 
 
 @router.callback_query(F.data.startswith("cfg:iran:"))
@@ -160,6 +192,13 @@ def admin_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text=fa.ADMIN_REFS_BTN, callback_data="admin:refs"),
                 InlineKeyboardButton(text=fa.ADMIN_AUTOPOST_BTN, callback_data="admin:autopost"),
+            ],
+            [
+                InlineKeyboardButton(text=fa.BTN_TEST_IRAN, callback_data="admin:testcfg"),
+                InlineKeyboardButton(text=fa.BTN_STATS, callback_data="admin:stats"),
+            ],
+            [
+                InlineKeyboardButton(text=fa.BTN_PURGE, callback_data="admin:purge"),
             ],
         ]
     )
@@ -256,10 +295,17 @@ async def receive_config(message: Message, ctx: AppContext) -> None:
         except Exception:
             return {"ok": [], "fail": []}
 
-    def _sort_key(item: tuple[dict[str, Any], dict[str, list[Any]]]) -> tuple[int, int, float]:
+    def _sort_key(
+        item: tuple[dict[str, Any], dict[str, list[Any]]]
+    ) -> tuple[int, int, int, float]:
         record, votes = item
         priority_rank = 0 if str(record.get("country_code") or "") in PRIORITY_COUNTRIES else 1
-        return (priority_rank, -len(votes.get("ok", [])), random.random())
+        return (
+            -_proto_port_score(record),
+            priority_rank,
+            -len(votes.get("ok", [])),
+            random.random(),
+        )
 
     paired: list[tuple[dict[str, Any], dict[str, list[Any]]]] = [
         (record, await _safe_votes(record)) for record in candidates
@@ -498,11 +544,54 @@ async def admin_panel(message: Message, ctx: AppContext) -> None:
     await message.answer(fa.ADMIN_PANEL, reply_markup=admin_keyboard())
 
 
-async def _admin_callback(callback: CallbackQuery, ctx: AppContext) -> bool:
+async def _is_admin_callback(callback: CallbackQuery, ctx: AppContext) -> bool:
     if not _is_admin(callback.from_user.id, ctx):
         await callback.answer(fa.ADMIN_ONLY, show_alert=True)
         return False
     return True
+
+
+async def _admin_callback(callback: CallbackQuery, ctx: AppContext) -> bool:
+    return await _is_admin_callback(callback, ctx)
+
+
+async def _pick_admin_test_config(ctx: AppContext, exclude: set) -> dict | None:
+    healthy = await ctx.storage.healthy_configs()
+    fresh = [r for r in healthy if str(r.get("id")) not in exclude]
+    pool = fresh or healthy
+    if not pool:
+        return None
+
+    def key(r):
+        pr = 0 if str(r.get("country_code") or "") in PRIORITY_COUNTRIES else 1
+        return (pr, -_proto_port_score(r), random.random())
+
+    pool.sort(key=key)
+    return pool[0]
+
+
+def _admin_test_keyboard(record: dict) -> InlineKeyboardMarkup:
+    config_id_value = str(record["id"])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=fa.BTN_IRAN_OK,
+                    callback_data=f"admin:tcfsend:{config_id_value}",
+                ),
+                InlineKeyboardButton(
+                    text=fa.BTN_IRAN_FAIL,
+                    callback_data=f"admin:tcffail:{config_id_value}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔁 کانفیگ بعدی",
+                    callback_data="admin:testcfg",
+                )
+            ],
+        ]
+    )
 
 
 @router.callback_query(F.data == "admin:status")
@@ -518,6 +607,98 @@ async def admin_status(callback: CallbackQuery, ctx: AppContext) -> None:
     error_text = fa.ADMIN_ERROR_RECORDED if last_error else fa.ADMIN_LAST_ERROR_NONE
     await callback.answer()
     await callback.message.answer(fa.admin_status(last_post_text, len(healthy), error_text))
+
+
+@router.callback_query(F.data == "admin:testcfg")
+async def admin_test_config(callback: CallbackQuery, ctx: AppContext) -> None:
+    if not await _is_admin_callback(callback, ctx):
+        return
+    seen = set(await ctx.storage.admin_test_seen())
+    record = await _pick_admin_test_config(ctx, seen)
+    if record is None:
+        await callback.answer(fa.ADMIN_NO_CANDIDATE, show_alert=True)
+        return
+    await ctx.storage.mark_admin_test_seen(str(record["id"]))
+    await callback.answer()
+    await callback.message.answer(
+        f"{fa.ADMIN_TEST_SENT}\n\n{format_test_card(record)}",
+        reply_markup=_admin_test_keyboard(record),
+    )
+
+
+@router.callback_query(F.data.startswith("admin:tcfsend:"))
+async def admin_test_send(callback: CallbackQuery, ctx: AppContext) -> None:
+    if not await _is_admin_callback(callback, ctx):
+        return
+    config_id_value = callback.data.rsplit(":", 1)[-1]
+    await callback.answer()
+    ok = await _manual_post(callback, ctx, config_id_value)
+    await callback.message.answer(fa.ADMIN_SENT if ok else fa.ADMIN_SEND_FAILED)
+
+
+@router.callback_query(F.data.startswith("admin:tcffail:"))
+async def admin_test_fail(callback: CallbackQuery, ctx: AppContext) -> None:
+    if not await _is_admin_callback(callback, ctx):
+        return
+    config_id_value = callback.data.rsplit(":", 1)[-1]
+    await ctx.storage.mark_admin_test_seen(config_id_value)
+    seen = set(await ctx.storage.admin_test_seen())
+    await callback.answer(fa.ADMIN_IRAN_FAIL_SAVED)
+    record = await _pick_admin_test_config(ctx, seen)
+    if record is None:
+        await callback.message.answer(fa.ADMIN_NO_CANDIDATE)
+        return
+    await ctx.storage.mark_admin_test_seen(str(record["id"]))
+    await callback.message.answer(
+        f"{fa.ADMIN_TEST_SENT}\n\n{format_test_card(record)}",
+        reply_markup=_admin_test_keyboard(record),
+    )
+
+
+@router.callback_query(F.data == "admin:stats")
+async def admin_stats(callback: CallbackQuery, ctx: AppContext) -> None:
+    if not await _is_admin_callback(callback, ctx):
+        return
+    healthy = await ctx.storage.healthy_configs()
+    protocol_counts = Counter(
+        str(record.get("protocol") or fa.UNKNOWN) for record in healthy
+    )
+    country_counts = Counter(
+        str(record.get("country") or record.get("country_code") or fa.UNKNOWN)
+        for record in healthy
+    )
+    queued = sum(1 for record in healthy if record.get("queued"))
+    protocols = "، ".join(
+        f"{name}: {fa.num(count)}" for name, count in protocol_counts.most_common()
+    ) or fa.UNKNOWN
+    countries = "، ".join(
+        f"{name}: {fa.num(count)}" for name, count in country_counts.most_common(5)
+    ) or fa.UNKNOWN
+    last_post = await ctx.storage.get_last_post()
+    last_post_text = (
+        jalali_datetime(float(last_post["ts"])) if last_post.get("ts") else fa.UNKNOWN
+    )
+    await callback.answer()
+    await callback.message.answer(
+        fa.ADMIN_STATS_FMT.format(
+            healthy=fa.num(len(healthy)),
+            queued=fa.num(queued),
+            protocols=protocols,
+            countries=countries,
+            last_post=last_post_text,
+        )
+    )
+
+
+@router.callback_query(F.data == "admin:purge")
+async def admin_purge(callback: CallbackQuery, ctx: AppContext) -> None:
+    if not await _is_admin_callback(callback, ctx):
+        return
+    removed, kept = await ctx.storage.purge_unhealthy()
+    await callback.answer()
+    await callback.message.answer(
+        fa.ADMIN_PURGED_FMT.format(removed=removed, kept=kept)
+    )
 
 
 async def _post_message_retry(

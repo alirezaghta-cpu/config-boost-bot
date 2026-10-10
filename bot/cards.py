@@ -5,7 +5,7 @@ import json
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 import aiohttp
 import qrcode
@@ -25,6 +25,7 @@ class ParsedConfig:
     protocol: str
     host: str
     port: int
+    security: str | None = None
 
 
 def _b64decode(value: str) -> bytes:
@@ -63,7 +64,9 @@ def parse_config_uri(uri: str) -> ParsedConfig:
             raise ConfigParseError("invalid port") from exc
         if not parsed.hostname or port is None:
             raise ConfigParseError("missing host or port")
-        return ParsedConfig(scheme, parsed.hostname, port)
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        security = str((query.get("security") or [""])[0]).strip() or None
+        return ParsedConfig(scheme, parsed.hostname, port, security)
 
     if scheme == "vmess":
         payload = raw[len("vmess://") :].split("#", 1)[0].strip()
@@ -71,11 +74,12 @@ def parse_config_uri(uri: str) -> ParsedConfig:
             data = json.loads(_b64decode(payload).decode("utf-8"))
             host = str(data.get("add") or data.get("host") or "").strip()
             port = int(data.get("port"))
+            security = str(data.get("tls") or data.get("security") or "").strip() or None
         except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError) as exc:
             raise ConfigParseError("invalid vmess") from exc
         if not host or not 1 <= port <= 65535:
             raise ConfigParseError("invalid vmess endpoint")
-        return ParsedConfig(scheme, host, port)
+        return ParsedConfig(scheme, host, port, security)
 
     payload = raw[len("ss://") :].split("#", 1)[0].split("?", 1)[0]
     payload = unquote(payload)
@@ -171,6 +175,7 @@ async def inspect_uri(
             "protocol": parsed.protocol,
             "host": parsed.host,
             "port": parsed.port,
+            "security": parsed.security,
             "ip": tcp.get("ip"),
             "country": None,
             "city": None,

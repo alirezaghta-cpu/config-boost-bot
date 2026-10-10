@@ -12,6 +12,8 @@ import aiohttp
 from bot import quota
 from bot.util import mask_secret, tehran_now
 
+ADMIN_TEST_SEEN_KEY = "admin:testcfg:seen"
+
 DEFAULT_SOURCES = [
     "https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/main/config.txt",
     "https://raw.githubusercontent.com/MatinGhanbari/v2ray-configs/main/all_configs.txt",
@@ -326,6 +328,35 @@ class KVStorage:
         if not isinstance(ids, list):
             ids = []
         await self.set_healthy_ids([config_id, *ids])
+
+    async def admin_test_seen(self) -> list[str]:
+        value = await self.get_json(ADMIN_TEST_SEEN_KEY, [])
+        if not isinstance(value, list):
+            return []
+        return [str(item) for item in value]
+
+    async def mark_admin_test_seen(self, item_id: str) -> None:
+        seen = await self.admin_test_seen()
+        updated = list(dict.fromkeys([*seen, str(item_id)]))[-50:]
+        await self.put_json(ADMIN_TEST_SEEN_KEY, updated)
+
+    async def purge_unhealthy(self) -> tuple[int, int]:
+        ids = await self.get_json("configs:healthy", [])
+        if not isinstance(ids, list):
+            ids = []
+        cutoff = int(time.time() - timedelta(days=7).total_seconds())
+        kept_ids: list[str] = []
+        for item_id in ids:
+            record = await self.get_config(str(item_id))
+            try:
+                tested_at = int(float(record.get("tested_at", 0))) if record else 0
+            except (TypeError, ValueError):
+                tested_at = 0
+            if record and record.get("healthy") and tested_at >= cutoff:
+                kept_ids.append(str(item_id))
+        kept_ids = list(dict.fromkeys(kept_ids))
+        await self.set_healthy_ids(kept_ids)
+        return len(ids) - len(kept_ids), len(kept_ids)
 
     async def posted_at(self, config_id: str) -> float:
         value = await self.get_text(f"posted:{config_id}")

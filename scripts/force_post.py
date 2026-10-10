@@ -16,6 +16,29 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from bot.locales import fa  # noqa: E402
 
 PRIORITY_COUNTRIES = ("DE", "FR", "NL", "CA", "US")
+IRAN_TLS_PORTS = {8443, 2053, 2083, 2087, 2096, 80}
+
+
+def _proto_port_score(record: dict) -> int:
+    proto = str(record.get("protocol") or "").lower()
+    sec = str(record.get("security") or "").lower()
+    port = int(record.get("port") or 0)
+    score = 0
+    if proto == "vless" and sec == "reality":
+        score += 60
+    elif proto == "trojan":
+        score += 45
+    elif proto == "vless":
+        score += 35
+    elif proto == "vmess":
+        score += 20
+    else:
+        score += 5
+    if port == 443:
+        score += 25
+    elif port in IRAN_TLS_PORTS:
+        score += 12
+    return score
 
 
 def req(url, method='GET', headers=None, data=None, timeout=15):
@@ -156,7 +179,13 @@ def main():
         record['id'] = str(item_id)
         candidates.append(record)
     votes_by_id = {c['id']: iran_votes(c['id']) for c in candidates}
-    candidates.sort(key=lambda c: (0 if str(c.get('country_code') or '') in PRIORITY_COUNTRIES else 1, -len(votes_by_id[c['id']]['ok']), -float(c.get('tested_at') or 0)))
+    candidates.sort(
+        key=lambda c: (
+            0 if str(c.get('country_code') or '') in PRIORITY_COUNTRIES else 1,
+            -_proto_port_score(c),
+            -float(c.get('tested_at') or 0),
+        )
+    )
     if not candidates:
         print(json.dumps({'error': 'no_candidates'}))
         raise SystemExit(1)
