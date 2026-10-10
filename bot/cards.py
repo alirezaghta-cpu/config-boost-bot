@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import base64
+import ipaddress
 import json
+import socket
+import time
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any
@@ -102,14 +106,29 @@ def worker_test_url(worker_url: str) -> str:
     return clean if clean.endswith("/test") else f"{clean}/test"
 
 
-async def tcp_test(
-    session: aiohttp.ClientSession,
-    settings: Settings,
-    parsed: ParsedConfig,
-) -> dict[str, Any]:
+async def direct_tcp_test(host, port):
+    """Direct socket TCP test fallback (same as scripts/)."""
+    def _run():
+        try:
+            infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+            ip = infos[0][4][0]
+            if not ipaddress.ip_address(ip).is_global:
+                return {"ok": False, "error": "non_global_ip"}
+            started = time.time()
+            with socket.create_connection((ip, port), timeout=8):
+                pass
+            return {"ok": True, "ip": ip, "latency_ms": int((time.time() - started) * 1000)}
+        except Exception as exc:
+            return {"ok": False, "error": type(exc).__name__}
+    return await asyncio.to_thread(_run)
+
+
+async def tcp_test(session, settings, parsed):
+    """Worker test with direct socket fallback (WORKER_SECRET mismatch returns 401)."""
     headers = {"Content-Type": "application/json"}
     if settings.worker_secret:
         headers["X-Worker-Secret"] = settings.worker_secret
+    worker_result = None
     try:
         async with session.post(
             worker_test_url(settings.worker_url),
@@ -118,11 +137,15 @@ async def tcp_test(
             timeout=aiohttp.ClientTimeout(total=10),
         ) as response:
             data = await response.json(content_type=None)
-            if response.status != 200:
-                return {"ok": False, "error": f"worker_http_{response.status}"}
-            return data if isinstance(data, dict) else {"ok": False, "error": "worker_payload"}
+            if response.status == 200 and isinstance(data, dict) and data.get("ok") and data.get("ip"):
+                return data
+            worker_result = data if isinstance(data, dict) else {"ok": False, "error": "worker_payload"}
     except (aiohttp.ClientError, TimeoutError, json.JSONDecodeError):
-        return {"ok": False, "error": "worker_unavailable"}
+        worker_result = {"ok": False, "error": "worker_unavailable"}
+    fallback = await direct_tcp_test(parsed.host, parsed.port)
+    if not fallback.get("ok") and isinstance(worker_result, dict) and worker_result.get("error"):
+        fallback["worker_error"] = worker_result["error"]
+    return fallback
 
 
 async def geo_lookup(

@@ -722,9 +722,29 @@ async def _manual_post(
     record = await ctx.storage.get_config(config_id_value)
     if not record:
         return False
-    _, fresh = await inspect_uri(record["uri"], ctx.settings, ctx.storage)
-    await ctx.storage.save_config(config_id_value, fresh)
-    if not fresh.get("healthy") or not fresh.get("ip"):
+    fresh = {}
+    for attempt in range(2):
+        try:
+            _, fresh = await inspect_uri(record["uri"], ctx.settings, ctx.storage)
+        except Exception:
+            fresh = {}
+        if fresh.get("healthy") and fresh.get("ip"):
+            break
+        if attempt == 0:
+            await asyncio.sleep(2)
+    if fresh.get("healthy") and fresh.get("ip"):
+        await ctx.storage.save_config(config_id_value, fresh)
+    elif (
+        record.get("healthy")
+        and record.get("ip")
+        and time.time() - float(record.get("tested_at", 0)) < 3600
+    ):
+        await ctx.storage.append_admin_log(
+            {"level": "warning", "event": "manual_retest_fallback_record", "config_id": config_id_value}
+        )
+    else:
+        if fresh:
+            await ctx.storage.save_config(config_id_value, fresh)
         await ctx.storage.append_admin_log(
             {"level": "error", "event": "manual_retest_failed", "config_id": config_id_value}
         )

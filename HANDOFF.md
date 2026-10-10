@@ -102,3 +102,9 @@
 - دکمه‌های جدید پنل ادمین: تست کانفیگ از ایران، آمار کانفیگ‌ها و پاکسازی کانفیگ‌های مرده.
 - `bot/cards.py` اکنون پارامتر `security` را برای VLESS/Trojan از query و برای VMess از فیلدهای `tls` یا `security` تشخیص می‌دهد و در رکورد ذخیره می‌کند.
 - اقدام روزانه: تست را از اینترنت ایران انجام بده و فقط در صورت اتصال واقعی از ایران دکمهٔ ✅ را بزن.
+
+
+## 15. Fix: manual send failing (2026-10-10)
+- Root cause: bot re-test called only the Worker; WORKER_SECRET mismatch -> 401 -> manual_retest_failed in last_error -> the admin 'send now' button never posted. Scripts were green because they have direct_test fallback; the bot had none.
+- Fix: direct_tcp_test fallback in bot/cards.py tcp_test + two retries and fresh-record (<1h) fallback in _manual_post (bot/handlers.py).
+- Lesson: every test path needs a direct fallback; aligning WORKER_SECRET with the deployed Worker is now optional, not required.
