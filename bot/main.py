@@ -8,10 +8,17 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from bot import menu_fix
 from bot.config import load_config
 from bot.handlers import ActionRateMiddleware, AppContext, router
 from bot.storage import KVStorage
+
+try:  # menu_fix is optional: never let it take the whole bot down
+    from bot import menu_fix
+except Exception as _menu_fix_import_error:  # noqa: BLE001
+    menu_fix = None
+    logging.getLogger(__name__).error(
+        "menu_fix import failed: %s", _menu_fix_import_error
+    )
 
 
 async def run() -> None:
@@ -30,7 +37,13 @@ async def run() -> None:
     dispatcher = Dispatcher(storage=MemoryStorage())
     router.message.outer_middleware(ActionRateMiddleware(storage))
     router.callback_query.outer_middleware(ActionRateMiddleware(storage))
-    menu_fix.install()
+    if menu_fix is not None:
+        try:
+            menu_fix.install()
+        except Exception as _menu_fix_install_error:  # noqa: BLE001
+            logging.getLogger(__name__).error(
+                "menu_fix install failed: %s", _menu_fix_install_error
+            )
     dispatcher.include_router(router)
     context = AppContext(settings=settings, storage=storage)
     try:

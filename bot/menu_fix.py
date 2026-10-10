@@ -1,16 +1,15 @@
 """رفع باگ منوها: ضربه زدن روی دکمه‌های منوی اصلی در هر state ورودی فعال
 نباید به ورودی کانفیگ تبدیل شود (پیام «فرمت کانفینگ معتبر نیست»).
 
-این ماژول یک هندلر با اولویت بالاتر (position 0) جلوی همهٔ هندلرهای
-state در router.message قرار می‌دهد: اگر متن یکی از دکمه‌های منوی اصلی
-باشد و کاربر در هر state ورودی باشد، state پاک و هندلر منوی درست اجرا می‌شود.
+این ماژول یک هندلر با اولویت بالاتر (position 0) جلوی همهٔ هندلرهای state
+در router.message قرار می‌دهد: اگر متن یکی از دکمه‌های منوی اصلی باشد و
+کاربر در هر state ورودی باشد، state پاک و هندلر منوی درست اجرا می‌شود.
 """
 
 from __future__ import annotations
 
 import logging
 
-from aiogram.dispatcher.handler import HandlerObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
@@ -48,9 +47,12 @@ async def _menu_escape_filter(event: object, **data: object) -> bool:
     if not isinstance(event, Message) or event.text not in MENU_TEXTS:
         return False
     state = data.get("state")
-    if not isinstance(state, FSMContext):
+    if state is None:
         return False
-    return bool(await state.get_state())
+    try:
+        return bool(await state.get_state())
+    except Exception:  # pragma: no cover - defensive
+        return False
 
 
 async def _menu_escape_handler(
@@ -79,11 +81,8 @@ async def _menu_escape_handler(
 
 
 def install() -> None:
-    handlers = getattr(router.message, "handlers", None)
-    if not isinstance(handlers, list):
-        logger.error("menu_fix: router.message.handlers unavailable; fix NOT installed")
-        return
-    handler = HandlerObject(callback=_menu_escape_handler, filters=[_menu_escape_filter])
-    if handler not in handlers:
-        handlers.insert(0, handler)
+    router.message.register(_menu_escape_handler, _menu_escape_filter)
+    handlers = router.message.handlers
+    if handlers:
+        handlers.insert(0, handlers.pop())
     logger.info("menu_fix: menu-escape handler installed at position 0")
