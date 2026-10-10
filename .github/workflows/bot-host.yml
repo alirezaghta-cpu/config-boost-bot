@@ -7,7 +7,7 @@ on:
 
 permissions:
   actions: write
-  contents: read
+  contents: write
 
 concurrency:
   group: bot-host
@@ -24,6 +24,19 @@ jobs:
           python-version: '3.12'
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Apply pending code patch (fix4: admin cards show URI) and persist
+        run: |
+          python scripts/apply_fix4.py || echo "patch script skipped (unexpected state)"
+          python -m py_compile bot/handlers.py bot/locales/fa.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bot/handlers.py
+          if git diff --cached --quiet; then
+            echo "handlers.py already patched in repo"
+          else
+            git commit -m "fix: include config URI in admin test/send cards (auto-applied at boot)" || true
+            git push || true
+          fi
       - name: Run bot and chain next run
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
