@@ -60,6 +60,7 @@ class Settings:
     worker_url: str
     bot_username: str
     worker_secret: str = ""
+    channel_link: str = "https://t.me/GalaxiesDrop"
 
     @property
     def first_admin_id(self) -> int:
@@ -115,6 +116,8 @@ def load_config() -> Settings:
     if not bot_username:
         _fatal(fa.invalid_key("BOT_USERNAME"))
 
+    channel_link = os.getenv("CHANNEL_LINK", "").strip() or "https://t.me/GalaxiesDrop"
+
     return Settings(
         bot_token=os.environ["BOT_TOKEN"].strip(),
         admin_ids=admin_ids,
@@ -128,4 +131,5 @@ def load_config() -> Settings:
         worker_url=worker_url,
         bot_username=bot_username,
         worker_secret=os.getenv("WORKER_SECRET", "").strip(),
+        channel_link=channel_link,
     )
