@@ -190,7 +190,13 @@ async def inspect_uri(
             await client.close()
 
 
-def format_test_card(record: dict[str, Any]) -> str:
+def format_test_card(record: dict[str, Any], iran_votes: dict[str, Any] | None = None) -> str:
+    if isinstance(iran_votes, dict):
+        ok = len(iran_votes.get("ok", []))
+        fail = len(iran_votes.get("fail", []))
+    else:
+        ok = 0
+        fail = 0
     return fa.test_card(
         protocol=str(record["protocol"]),
         host=str(record["host"]),
@@ -202,6 +208,9 @@ def format_test_card(record: dict[str, Any]) -> str:
         isp=record.get("isp"),
         latency_ms=int(record.get("latency_ms", 0)),
         tested_at=str(record["tested_at_tehran"]),
+        data_remaining_gb=record.get("data_remaining_gb"),
+        iran_ok=ok,
+        iran_fail=fail,
     )
 
 

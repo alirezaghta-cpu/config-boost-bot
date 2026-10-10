@@ -15,6 +15,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from bot.locales import fa  # noqa: E402
 
+PRIORITY_COUNTRIES = ("DE", "FR", "NL", "CA", "US")
+
 
 def req(url, method='GET', headers=None, data=None, timeout=15):
     request_obj = urllib.request.Request(url, data=data, method=method, headers=headers or {})
@@ -54,6 +56,20 @@ def kv_json(key, default=None):
         return json.loads(raw)
     except ValueError:
         return default
+
+
+def iran_votes(item_id):
+    try:
+        data = kv_json('iran:' + str(item_id), None)
+    except Exception:
+        return {'ok': [], 'fail': []}
+    if not isinstance(data, dict):
+        return {'ok': [], 'fail': []}
+    ok = data.get('ok') or []
+    fail = data.get('fail') or []
+    if not isinstance(ok, list) or not isinstance(fail, list):
+        return {'ok': [], 'fail': []}
+    return {'ok': [int(x) for x in ok], 'fail': [int(x) for x in fail]}
 
 
 def kv_put(key, value, as_json=False):
@@ -139,7 +155,8 @@ def main():
             continue
         record['id'] = str(item_id)
         candidates.append(record)
-    candidates.sort(key=lambda item: float(item.get('tested_at', 0) or 0), reverse=True)
+    votes_by_id = {c['id']: iran_votes(c['id']) for c in candidates}
+    candidates.sort(key=lambda c: (0 if str(c.get('country_code') or '') in PRIORITY_COUNTRIES else 1, -len(votes_by_id[c['id']]['ok']), -float(c.get('tested_at') or 0)))
     if not candidates:
         print(json.dumps({'error': 'no_candidates'}))
         raise SystemExit(1)
@@ -158,7 +175,8 @@ def main():
         raise SystemExit(1)
     link = 'https://t.me/' + BOT_USERNAME + '?start=cfg_' + selected['id']
     code = html.escape(str(selected.get('uri', '')), quote=False)
-    text = fa.channel_post(selected, BOT_USERNAME, code)
+    selected_votes = votes_by_id.get(selected['id'], {'ok': [], 'fail': []})
+    text = fa.channel_post(selected, BOT_USERNAME, code, iran_ok=len(selected_votes['ok']), iran_fail=len(selected_votes['fail']))
     buttons = {'inline_keyboard': [[{'text': fa.BTN_TEST, 'url': link}], [{'text': fa.BTN_COPY_FROM_BOT, 'url': link}]]}
     sent = []
     errors = []

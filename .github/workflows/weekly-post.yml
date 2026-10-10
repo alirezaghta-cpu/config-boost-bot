@@ -1,8 +1,8 @@
-name: Weekly Telegram post
+name: Auto Telegram post (every 5h)
 
 on:
   schedule:
-    - cron: "30 14 * * 5"
+    - cron: "15 */5 * * *"
   workflow_dispatch:
     inputs:
       force:

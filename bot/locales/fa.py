@@ -1,4 +1,4 @@
-"""تمام متن‌های کاربرمحور فارسی ربات در این ماژول نگهداری می‌شوند."""
+"""تمام متن‌های کاربرمحور فارسی ربات در این ماژول نگهداری می‌شود."""
 
 import html
 
@@ -33,8 +33,48 @@ BTN_ORDERS = "سفارش‌ها"
 BTN_BACK = "بازگشت"
 BTN_CONFIRM = "تأیید"
 BTN_CANCEL = "لغو"
+BTN_IRAN_OK = "✅ وصل شدم (از ایران)"
+BTN_IRAN_FAIL = "❌ وصل نشدم"
+ADMIN_MODE_H5 = "هر ۵ ساعت"
+DATA_CAP_GB: int = 5
+IRAN_VOTE_OK_SAVED = "✅ گزارش «وصل شد» برای این کانفیگ ثبت شد. ممنون!"
+IRAN_VOTE_FAIL_SAVED = "❌ گزارش «قطع شد» برای این کانفیگ ثبت شد. ممنون!"
+IRAN_VOTE_ONLY_DELIVERED = (
+    "گزارش فقط برای کانفیگ‌هایی که قبلاً با سهمیهٔ خودتان دریافت کرده‌اید ثبت می‌شود."
+)
+IRAN_REPORT_PROMPT = (
+    "اگر الان با آیپی ایران وصل شدید یا قطع شدید، یکی از دکمه‌های زیر را بزنید:"
+)
 
-WELCOME = "سلام! از منوی زیر انتخاب کنید."
+
+def data_line(remaining_gb: float | None = None) -> str:
+    if remaining_gb is not None:
+        return f"حجم باقی‌مانده: {num(remaining_gb)} از {num(DATA_CAP_GB)} گیگ"
+    return "حجم: نامحدود ← سقف هر کانفیگ: ۵ گیگ"
+
+
+def iran_line(ok: int = 0, fail: int = 0) -> str:
+    if ok == 0 and fail == 0:
+        return (
+            "اتصال از ایران: هنوز گزارشی ثبت نشده؛ "
+            "اگر با آیپی ایران وصل شدید گزارش بدهید"
+        )
+    return f"اتصال از ایران: ✅ {num(ok)} موفق / ❌ {num(fail)} ناموفق"
+
+
+WELCOME = (
+    "سلام! 👋\n\n"
+    "از منوی زیر انتخاب کنید:\n"
+    "• دریافت کانفیگ این هفته\n"
+    "• تست و لوکیشن\n"
+    "• سهمیهٔ من\n"
+    "• زیرمجموعه‌گیری\n"
+    "• راهنما\n"
+    "• پشتیبانی\n\n"
+    "📡 هر ۵ ساعت یک‌بار، کانفیگ‌های تست‌شده به‌طور خودکار در کانال و گروه ارسال می‌شوند.\n"
+    "🌍 بیشتر کانفیگ‌ها از کشورهای آلمان، فرانسه، هلند، کانادا و آمریکا هستند.\n"
+    "💾 سقف مصرف هر کانفیگ ۵ گیگابایت است؛ پس از رسیدن به سقف، کانفیگ جدید دریافت کنید."
+)
 GENERIC_ERROR = "متأسفانه خطایی رخ داد. لطفاً کمی بعد دوباره تلاش کنید."
 RATE_LIMIT = "درخواست‌ها خیلی سریع ارسال شده‌اند. لطفاً کمی بعد دوباره تلاش کنید."
 IGNORED_CONTENT = "فقط متن یا فایل پذیرفته می‌شود."
@@ -78,7 +118,10 @@ HELP_TEXT = (
     "• زیرمجموعه وقتی معتبر است که اولین‌بار با لینک شما وارد شود و خودش یک کانفیگ بگیرد.\n"
     "• کارت تست، سلامت TCP، IP، کشور/شهر، ISP، پینگ و زمان تست را نشان می‌دهد؛ اطلاعات ناموجود جعل نمی‌شود.\n"
     "• دیدن پست کانال یا کارت لوکیشن سهمیه کم نمی‌کند؛ فقط دکمهٔ «دریافت کانفیگ این هفته» مصرف را ثبت می‌کند.\n"
-    "• کپی و QR فقط برای کانفیگی فعال است که قبلاً با سهمیهٔ خودتان گرفته باشید."
+    "• کپی و QR فقط برای کانفیگی فعال است که قبلاً با سهمیهٔ خودتان گرفته باشید.\n"
+    "• سقف مصرف هر کانفیگ ۵ گیگابایت است؛ حجم باقی‌مانده در کنار کارت تست نمایش داده می‌شود.\n"
+    "• گزارش‌های اتصال یا قطع از ایران، روی اولویت کانفیگ‌ها تأثیر می‌گذارد.\n"
+    "• ارسال خودکار کانفیگ‌های تست‌شده هر ۵ ساعت یک‌بار انجام می‌شود."
 )
 
 UNKNOWN = "نامشخص"
@@ -139,6 +182,10 @@ def test_card(
     isp: str | None,
     latency_ms: int,
     tested_at: str,
+    *,
+    data_remaining_gb: float | None = None,
+    iran_ok: int = 0,
+    iran_fail: int = 0,
 ) -> str:
     if country and city:
         location = f"{flag + ' ' if flag else ''}{country} / {city}"
@@ -153,17 +200,26 @@ def test_card(
         f"لوکیشن: {html.escape(location)}\n"
         f"ISP: {html.escape(isp or UNKNOWN)}\n"
         f"پینگ: {latency_ms} ms\n"
-        f"زمان تست: {html.escape(tested_at)}"
+        f"زمان تست: {html.escape(tested_at)}\n"
+        f"{data_line(data_remaining_gb)}\n"
+        f"{iran_line(iran_ok, iran_fail)}"
     )
 
 
-def channel_post(record: dict, bot_username: str, escaped_uri: str) -> str:
+def channel_post(
+    record: dict,
+    bot_username: str,
+    escaped_uri: str,
+    *,
+    iran_ok: int = 0,
+    iran_fail: int = 0,
+) -> str:
     country = record.get("country") or UNKNOWN
     city = record.get("city") or UNKNOWN
     flag = record.get("flag") or ""
     location = f"{flag + ' ' if flag else ''}{country} / {city}"
     return (
-        "کانفیگ رایگان هفتگی\n"
+        "<b>کانفیگ رایگان — ارسال هر ۵ ساعت</b>\n"
         "وضعیت: تست‌شده و سالم\n"
         f"لوکیشن: {html.escape(location)}\n"
         f"IP: {html.escape(str(record['ip']))}\n"
@@ -172,6 +228,8 @@ def channel_post(record: dict, bot_username: str, escaped_uri: str) -> str:
         f"پروتکل: {html.escape(str(record['protocol']))}\n"
         f"زمان تست: {html.escape(str(record['tested_at_tehran']))}\n\n"
         f"<code>{escaped_uri}</code>\n\n"
+        f"{data_line(record.get('data_remaining_gb'))}\n"
+        f"{iran_line(iran_ok, iran_fail)}\n\n"
         f"دریافت از ربات با سهمیهٔ هفتگی: @{html.escape(bot_username)}"
     )
 

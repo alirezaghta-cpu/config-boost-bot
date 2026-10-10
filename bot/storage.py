@@ -338,13 +338,43 @@ class KVStorage:
         await self.put_text(f"posted:{config_id}", str(ts or time.time()))
 
     async def get_post_mode(self) -> str:
-        mode = (await self.get_text("post:mode") or "weekly").strip()
-        return mode if mode in {"weekly", "d3", "off"} else "weekly"
+        mode = (await self.get_text("post:mode") or "h5").strip()
+        return mode if mode in {"h5", "weekly", "d3", "off"} else "h5"
 
     async def set_post_mode(self, mode: str) -> None:
-        if mode not in {"weekly", "d3", "off"}:
+        if mode not in {"h5", "weekly", "d3", "off"}:
             raise ValueError("invalid post mode")
         await self.put_text("post:mode", mode)
+
+    async def get_iran_votes(self, config_id: int | str) -> dict[str, list[int]]:
+        votes = await self.get_json(f"iran:{config_id}", None)
+        if not isinstance(votes, dict):
+            return {"ok": [], "fail": []}
+
+        def _ints(value: object) -> list[int]:
+            if not isinstance(value, list):
+                return []
+            out: list[int] = []
+            for item in value:
+                try:
+                    out.append(int(item))
+                except (TypeError, ValueError):
+                    continue
+            return out
+
+        return {"ok": _ints(votes.get("ok")), "fail": _ints(votes.get("fail"))}
+
+    async def record_iran_vote(self, config_id: int | str, tg_id: int | str, ok: bool) -> dict[str, list[int]]:
+        votes = await self.get_iran_votes(config_id)
+        tg = int(tg_id)
+        votes["ok"] = [x for x in votes["ok"] if x != tg]
+        votes["fail"] = [x for x in votes["fail"] if x != tg]
+        if ok:
+            votes["ok"].append(tg)
+        else:
+            votes["fail"].append(tg)
+        await self.put_json(f"iran:{config_id}", votes)
+        return votes
 
     async def get_auto_post(self) -> bool:
         return (await self.get_text("auto_post") or "on").strip() != "off"

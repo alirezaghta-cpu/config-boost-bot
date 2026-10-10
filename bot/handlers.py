@@ -96,7 +96,11 @@ def config_keyboard(config_id_value: str) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text=fa.BTN_TEST, callback_data=f"cfg:test:{config_id_value}"),
                 InlineKeyboardButton(text=fa.BTN_COPY, callback_data=f"cfg:copy:{config_id_value}"),
                 InlineKeyboardButton(text=fa.BTN_QR, callback_data=f"cfg:qr:{config_id_value}"),
-            ]
+            ],
+            [
+                InlineKeyboardButton(text=fa.BTN_IRAN_OK, callback_data=f"cfg:iran:{config_id_value}:ok"),
+                InlineKeyboardButton(text=fa.BTN_IRAN_FAIL, callback_data=f"cfg:iran:{config_id_value}:fail"),
+            ],
         ]
     )
 
@@ -110,6 +114,31 @@ def channel_keyboard(settings: Settings, config_id_value: str) -> InlineKeyboard
                 InlineKeyboardButton(text=fa.BTN_COPY_FROM_BOT, url=link),
             ]
         ]
+    )
+
+
+PRIORITY_COUNTRIES = ("DE", "FR", "NL", "CA", "US")
+
+
+@router.callback_query(F.data.startswith("cfg:iran:"))
+async def iran_vote(callback: CallbackQuery, ctx: AppContext) -> None:
+    _prefix, _marker, config_id, verdict = callback.data.split(":", 3)
+    record = await ctx.storage.get_config(config_id)
+    if not record:
+        await callback.answer(fa.CONFIG_NOT_FOUND, show_alert=True)
+        return
+    user = await ctx.storage.ensure_user(callback.from_user.id)
+    if config_id not in user.get("delivered_config_ids", []):
+        await callback.answer(fa.IRAN_VOTE_ONLY_DELIVERED, show_alert=True)
+        return
+    votes = await ctx.storage.record_iran_vote(
+        config_id, callback.from_user.id, verdict == "ok"
+    )
+    await callback.answer(
+        fa.IRAN_VOTE_OK_SAVED if verdict == "ok" else fa.IRAN_VOTE_FAIL_SAVED
+    )
+    await callback.message.answer(
+        fa.iran_line(len(votes.get("ok", [])), len(votes.get("fail", [])))
     )
 
 
@@ -146,6 +175,7 @@ async def _show_config(message: Message, config: dict[str, Any], config_id_value
         prefix + format_test_card(config),
         reply_markup=config_keyboard(config_id_value),
     )
+    await message.answer(fa.IRAN_REPORT_PROMPT)
 
 
 async def _register_start(user_id: int, payload: str | None, ctx: AppContext) -> dict[str, Any]:
@@ -219,7 +249,24 @@ async def receive_config(message: Message, ctx: AppContext) -> None:
         await message.answer(fa.NO_HEALTHY_CONFIG)
         return
 
-    selected = random.choice(candidates)
+    async def _safe_votes(record: dict[str, Any]) -> dict[str, list[Any]]:
+        try:
+            v = await ctx.storage.get_iran_votes(record["id"])
+            return v if isinstance(v, dict) else {"ok": [], "fail": []}
+        except Exception:
+            return {"ok": [], "fail": []}
+
+    def _sort_key(item: tuple[dict[str, Any], dict[str, list[Any]]]) -> tuple[int, int, float]:
+        record, votes = item
+        priority_rank = 0 if str(record.get("country_code") or "") in PRIORITY_COUNTRIES else 1
+        return (priority_rank, -len(votes.get("ok", [])), random.random())
+
+    paired: list[tuple[dict[str, Any], dict[str, list[Any]]]] = [
+        (record, await _safe_votes(record)) for record in candidates
+    ]
+    paired.sort(key=_sort_key)
+    selected = paired[0][0]
+
     result = quota.consume_one(user, stats["qualified"], config_id=selected["id"])
     if not result.allowed:
         await message.answer(quota.shortage_message(stats["qualified"], int(user.get("used_this_week", 0))))
@@ -580,6 +627,7 @@ async def admin_modes(callback: CallbackQuery, ctx: AppContext) -> None:
                 InlineKeyboardButton(text=fa.ADMIN_MODE_D3, callback_data="admin:mode:d3"),
                 InlineKeyboardButton(text=fa.ADMIN_MODE_OFF, callback_data="admin:mode:off"),
             ],
+            [InlineKeyboardButton(text=fa.ADMIN_MODE_H5, callback_data="admin:mode:h5")],
             [InlineKeyboardButton(text=fa.ADMIN_SEND_BTN, callback_data="admin:send")],
         ]
     )
@@ -596,6 +644,7 @@ async def admin_mode_set(callback: CallbackQuery, ctx: AppContext) -> None:
         "weekly": fa.ADMIN_MODE_WEEKLY,
         "d3": fa.ADMIN_MODE_D3,
         "off": fa.ADMIN_MODE_OFF,
+        "h5": fa.ADMIN_MODE_H5,
     }
     if mode not in labels:
         await callback.answer(fa.GENERIC_ERROR, show_alert=True)

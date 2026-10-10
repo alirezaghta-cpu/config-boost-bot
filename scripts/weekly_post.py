@@ -21,6 +21,7 @@ from bot.locales import fa  # noqa: E402
 
 LOCK_NAME = "weekly-post"
 LOCK_TTL = 3000
+PRIORITY_COUNTRIES = ("DE", "FR", "NL", "CA", "US")
 
 
 def required(name: str) -> str:
@@ -103,7 +104,17 @@ def kv_delete(key):
         headers=kv_headers(),
     )
     if status not in {200, 204, 404}:
-        raise RuntimeError(f"KV delete failed: HTTP {status}")
+        raise RuntimeError(f"KV delete failed: {status}")
+
+
+def iran_votes(item_id: str) -> dict:
+    try:
+        raw = kv_get_json(f"iran:{item_id}", None)
+        ok = [int(x) for x in raw.get("ok", [])] if isinstance(raw, dict) else []
+        fail = [int(x) for x in raw.get("fail", [])] if isinstance(raw, dict) else []
+        return {"ok": ok, "fail": fail}
+    except Exception:
+        return {"ok": [], "fail": []}
 
 
 def acquire_lock() -> bool:
@@ -204,6 +215,8 @@ def channel_buttons(config_id: str) -> dict:
 
 def is_post_due(mode: str, last_ts: float) -> bool:
     now = time.time()
+    if mode == "h5":
+        return now - last_ts >= 5 * 3600
     if mode == "d3":
         return now - last_ts >= 3 * 86400
     return now - last_ts >= 6 * 86400
@@ -214,9 +227,9 @@ def main() -> None:
         print("locked; skipping")
         return
     try:
-        mode = (kv_get_text("post:mode") or "weekly").strip()
-        if mode not in {"weekly", "d3", "off"}:
-            mode = "weekly"
+        mode = (kv_get_text("post:mode") or "h5").strip()
+        if mode not in {"h5", "weekly", "d3", "off"}:
+            mode = "h5"
         auto = (kv_get_text("auto_post") or "on").strip() != "off"
         if mode == "off" or not auto:
             print("posting disabled")
@@ -252,7 +265,14 @@ def main() -> None:
             notify_admin(fa.CRON_NO_CONFIG_ADMIN)
             return
 
-        candidates.sort(key=lambda item: float(item.get("tested_at", 0) or 0), reverse=True)
+        votes_by_id = {c["id"]: iran_votes(c["id"]) for c in candidates}
+        candidates.sort(
+            key=lambda c: (
+                0 if str(c.get("country_code") or "") in PRIORITY_COUNTRIES else 1,
+                -len(votes_by_id[c["id"]]["ok"]),
+                -float(c.get("tested_at") or 0),
+            )
+        )
         selected = None
         tcp = {"ok": False}
         for candidate in candidates[:5]:
@@ -268,7 +288,14 @@ def main() -> None:
             )
             return
 
-        text = fa.channel_post(selected, BOT_USERNAME, html.escape(str(selected["uri"]), quote=False))
+        selected_votes = votes_by_id.get(selected["id"], {"ok": [], "fail": []})
+        text = fa.channel_post(
+            selected,
+            BOT_USERNAME,
+            html.escape(str(selected.get("uri", "")), quote=False),
+            iran_ok=len(selected_votes["ok"]),
+            iran_fail=len(selected_votes["fail"]),
+        )
         reply_markup = channel_buttons(selected["id"])
         sent = []
         for chat_id in (CHANNEL_ID, GROUP_ID):
