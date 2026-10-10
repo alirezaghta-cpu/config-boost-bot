@@ -193,18 +193,15 @@ def test_card(
     iran_ok: int = 0,
     iran_fail: int = 0,
 ) -> str:
+    _ = host, port, ip, isp, tested_at
     if country and city:
         location = f"{flag + ' ' if flag else ''}{country} / {city}"
     else:
         location = UNKNOWN
     return (
-        f"وضعیت: {HEALTHY}\n"
+        f"وضعیت: {HEALTHY} ✅\n"
         f"پروتکل: {html.escape(protocol)}\n"
-        f"هاست: {html.escape(host)}\n"
-        f"پورت: {port}\n"
-        f"IP: {html.escape(ip)}\n"
         f"لوکیشن: {html.escape(location)}\n"
-        f"ISP: {html.escape(isp or UNKNOWN)}\n"
         f"پینگ: {latency_ms} ms\n"
         f"{data_line(data_remaining_gb)}\n"
         f"{iran_line(iran_ok, iran_fail)}"
@@ -230,11 +227,8 @@ def channel_post(
     )
     return (
         "<b>کانفیگ رایگان — ارسال هر ۵ ساعت</b>\n"
-        "وضعیت: تست‌شده و سالم\n"
+        "وضعیت: تست‌شده و سالم ✅\n"
         f"لوکیشن: {html.escape(location)}\n"
-        f"IP: {html.escape(str(record['ip']))}\n"
-        f"ISP: {html.escape(str(record.get('isp') or UNKNOWN))}\n"
-        f"پینگ: {record['latency_ms']} ms\n"
         f"پروتکل: {html.escape(str(record['protocol']))}\n"
         f"{reality_line}\n"
         f"<code>{escaped_uri}</code>\n\n"
@@ -252,6 +246,17 @@ CONFIG_RESENT = "کانفیگ‌های همین هفته دوباره ارسال
 CONFIG_DELIVERED = "یک کانفیگ رایگان سالم برای شما ثبت شد."
 QR_CAPTION = "QR کانفیگ تحویل‌شده"
 START_PREVIEW = "این پیش‌نمایش دریافت جدیدی ثبت نمی‌کند."
+
+BTN_JOIN = "عضویت"
+BTN_JOIN_CONFIRM = "تایید عضویت"
+GATE_TEXT = (
+    "برای استفاده از ربات ابتدا در کانال @GalaxiesDrop عضو شوید.\n\n"
+    "۱) روی دکمهٔ «عضویت» بزنید و وارد کانال شوید.\n"
+    "۲) در کانال عضو شوید و به ربات برگردید.\n"
+    "۳) دکمهٔ «تایید عضویت» را بزنید."
+)
+GATE_NOT_MEMBER = "هنوز عضو کانال نیستید؛ اول عضو شوید، بعد تایید بزنید."
+GATE_OK = "عضویت تأیید شد ✅"
 
 ADMIN_ONLY = "این بخش فقط برای ادمین است."
 ADMIN_PANEL = "پنل ادمین؛ یک گزینه را انتخاب کنید."

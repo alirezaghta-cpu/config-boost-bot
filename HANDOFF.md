@@ -1,110 +1,125 @@
-# بخش الف — HANDOFF.md (نسخهٔ بازنویسی‌شده و دسته‌بندی‌شده)
+# HANDOFF.md — فایل واحد صفر تا صد پروژه ConfigBoost
+
+> این فایل تنها مرجع کامل پروژه است؛ ایجنت/عامل جدید فقط با همین فایل می‌تواند کار را تحویل بگیرد، اجرا کند و ادامه دهد. آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۱۰.
 
 ## ۱. شناسنامهٔ پروژه
 - ربات تلگرامی رایگان **@ConfigBoostbot** (id `8840739761`) برای جمع‌آوری، تست و توزیع کانفیگ‌های v2ray (vless / vmess / trojan / ss).
 - مقاصد ارسال: کانال **@GalaxiesDrop** (`-1001686062564`) و گروه **@IRvasl** (`-1003793302941`).
-- مقررات سخت‌گیرانهٔ صاحب پروژه: **۱۰۰٪ رایگان** — بدون کارت بانکی، VPS پولی، دامنهٔ پولی یا درگاه پرداخت. پاسخ به کاربر فارسی؛ فارسی و انگلیسی در یک پاراگراف قاطی نشود. کانفیگ بدون تست موفق TCP نباید تحویل شود.
-- اولویت جغرافیایی کانفیگ‌ها: **آلمان، فرانسه، هلند، کانادا، آمریکا** (`PRIORITY_COUNTRIES`).
+- مقررات سخت صاحب پروژه: **۱۰۰٪ رایگان** — بدون کارت بانکی، VPS پولی، دامنهٔ پولی یا درگاه پرداخت. پاسخ کاربر فارسی؛ فارسی و انگلیسی در یک پاراگراف قاطی نشود. کانفیگ بدون تست موفق TCP نباید تحویل/ارسال شود. توکن‌ها و secretها هرگز در ریپو، لاگ عمومی یا پیام کانال نروند.
+- اولویت جغرافیایی: **DE، FR، NL، CA، US** (`PRIORITY_COUNTRIES`).
 
-## ۲. معماری و اجزا
+## ۲. دسترسی‌ها از صفر (برای ایجنت جدید)
+1. **GitHub**: مخزن عمومی است؛ خواندن بدون توکن با `api.github.com` + هدر `User-Agent` ممکن است (بدون User-Agent خطای 403 می‌دهد). برای commit/dispatch از OAuth متصل (Composio github) یا PAT صاحب پروژه استفاده کن. اکشن‌های تأییدشده: `GITHUB_COMMIT_MULTIPLE_FILES` (upsert/delete چندفایلی)، `GITHUB_CREATE_A_WORKFLOW_DISPATCH_EVENT`، `GITHUB_CANCEL_WORKFLOW_RUN`. محدودیت حجم هر فراخوانی ≈ ۱۰هزار کاراکتر است؛ فایل‌های بزرگ را با اسکریپت پچ یک‌بارمصرف در Actions اعمال کن (نمونه: `scripts/apply_fix3.py` + `.github/workflows/apply-fix3.yml`).
+2. **GitHub Actions secrets (فقط نام)**: `BOT_TOKEN`, `ADMIN_IDS`, `CHANNEL_ID`, `GROUP_ID`, `BOT_USERNAME`, `GITHUB_TOKEN` (در صورت نیاز)، `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `WORKER_SECRET`. غیر-secret ثابت: `KV_NAMESPACE_ID=2cbd1ab46bd942809c89592830a94719`، `WORKER_URL=https://config-boost-test.configboost.workers.dev`.
+3. **Cloudflare**: account id `85c015039637471c2402dfeb4c23efc`؛ توکن باید دسترسی Workers KV Read/Write داشته باشد. Worker با گردش‌کار `Deploy Cloudflare Worker` مستقر می‌شود.
+4. **تلگرام**: ربات ادمین کانال با `can_post_messages` است (بررسی شده). برای دروازهٔ عضویت (`get_chat_member`) ربات باید در کانال ادمین/عضو بماند. ادمین/steward عددی: `452259540`.
+5. **بدون دسترسی**: تست رایگان از IP ایران، اجرای واقعی سقف ۵ گیگ (نیازمند API پنل اختصاصی — هنوز داده نشده)، پرداخت.
+
+## ۳. معماری و اجزا
 | جزء | کجاست | کار |
 |---|---|---|
-| مخزن | `github.com/alirezaghta-cpu/config-boost-bot` (عمومی، `main`) | کد + گردش‌کارها + `data/subscription.txt` |
-| ربات | `bot/` — Python 3.12 + aiogram 3، polling | منو، سهمیه، رفرال، تست، گزارش اتصال ایران، پنل ادمین |
-| Worker | `worker/tcp-test.js` روی Cloudflare Workers | تست TCP از شبکهٔ Cloudflare |
-| ذخیره‌سازی | Cloudflare KV — namespace `2cbd1ab46bd942809c89592830a94719` | کانفیگ‌ها، کاربران، رأی‌های ایران، قفل‌ها، geo |
-| زمان‌بندی | GitHub Actions (۵ گردش‌کار) | refresh، پست هر ۵ ساعت، میزبانی ۲۴/۷ ربات، force-post، deploy Worker |
+| مخزن | `github.com/alirezaghta-cpu/config-boost-bot` (عمومی، `main`) | کد + گردش‌کارها + `data/subscription.txt` + این فایل |
+| ربات | `bot/` — Python 3.12 + aiogram 3 + MemoryStorage، polling | منو، سهمیه، رفرال، تست، گزارش ایران، پنل ادمین، دروازهٔ عضویت کانال |
+| Worker | `worker/tcp-test.js` روی Cloudflare Workers | تست TCP: `GET /health` → `{"ok":true}`؛ `POST /test` با بدنه `{host,port}` و هدر `X-Worker-Secret` |
+| ذخیره‌سازی | Cloudflare KV (namespace بالا) | کانفیگ‌ها، کاربران، رأی‌ها، قفل‌ها، geo |
+| زمان‌بندی | GitHub Actions (۶ گردش‌کار) | جدول بخش ۴ |
 
-- فایل‌های کلیدی ربات: `bot/main.py`, `bot/handlers.py`, `bot/quota.py`, `bot/storage.py`, `bot/cards.py`, `bot/locales/fa.py`
-- Worker: `GET /health` → `{"ok":true}`؛ `POST /test` با بدنه `{host,port}` و هدر `X-Worker-Secret`.
-- تست TCP فقط اتصال سوکت است ≠ تست تونل واقعی؛ اگر Worker جواب ندهد fallback تست مستقیم از runner.
-
-## ۳. شناسه‌ها و آدرس‌ها
-- ربات: `@ConfigBoostbot` — ادمین کانال با `can_post_messages`، عضو گروه با اجازهٔ ارسال (تأیید API شده).
-- ادمین/steward عددی: `452259540`
-- Cloudflare account id: `85c015039637471c2402dfeb4c23efc`
-- KV namespace id: `2cbd1ab46bd942809c89592830a94719`
-- Worker URL: `https://config-boost-test.configboost.workers.dev`
-- BOT_USERNAME: `ConfigBoostbot`
+- فایل‌های کلیدی: `bot/main.py` (راه‌اندازی + middlewareها)، `bot/handlers.py` (همهٔ هندلرها + دروازه)، `bot/quota.py` (سهمیه/رفرال)، `bot/storage.py` (KV)، `bot/cards.py` (تست/کارت)، `bot/locales/fa.py` (تمام متن‌های فارسی)، `bot/menu_fix.py` (رفع باگ منو در هر state)، `bot/config.py` (`Settings` + `.env`).
+- تست TCP فقط اتصال سوکت است ≠ تست تونل واقعی. هر مسیر تست باید fallback مستقیم (سوکت) داشته باشد — درسِ باگ 401 امروز.
 
 ## ۴. گردش‌کارهای GitHub Actions
 | گردش‌کار | فایل | زمان‌بندی | کار |
 |---|---|---|---|
-| Refresh healthy sources | `refresh-sources.yml` | هر ۶ ساعت + دستی | `scripts/refresh_sources.py` — جمع‌آوری از ۵ منبع، تست ۳۰ تا با چرخش cursor (`refresh:cursor`)، بازسازی `configs:healthy`، کامیت `data/subscription.txt` |
-| **Auto Telegram post** | `weekly-post.yml` | **هر ۵ ساعت (`15 */5 * * *`) + دستی با `force`** | `scripts/weekly_post.py` — انتخاب کاندید با اولویت (کشورهای اولویت‌دار ← امتیاز پروتکل/پورت ← تازه‌ترین)، تست مجدد تا اولین موفق، ارسال به کانال+گروه |
-| Force post | `force-post.yml` | فقط دستی | `scripts/force_post.py` — همان اولویت‌بندی، ارسال فوری؛ لاگ JSON `{"posted","targets","errors"}` |
-| Bot host (24/7 chain) | `bot-host.yml` | زنجیره‌ای + cron پشتیبان هر ۶ ساعت | اجرای ربات تا ۵:۴۰ (`timeout 20400s`) سپس `gh workflow run` خودکار؛ concurrency گروه `bot-host` |
-| Deploy Worker | `deploy-worker.yml` | فقط دستی | آپلود `worker/tcp-test.js` + باند secret + health check |
+| Refresh healthy sources | `refresh-sources.yml` | هر ۶ ساعت + دستی | `scripts/refresh_sources.py` — ۵ منبع، تست با چرخش cursor (`refresh:cursor`)، بازسازی `configs:healthy`، کامیت `data/subscription.txt` |
+| Auto Telegram post | `weekly-post.yml` | هر ۵ ساعت (`15 */5 * * *`) + دستی با ورودی `force` | `scripts/weekly_post.py` — انتخاب کاندید با اولویت، تست مجدد، ارسال به کانال+گروه |
+| Force post | `force-post.yml` | فقط دستی | `scripts/force_post.py` — همان مسیر با لاگ JSON |
+| Bot host (24/7 chain) | `bot-host.yml` | زنجیره‌ای (timeout 20400s ≈ ۵:۴۰) + cron پشتیبان هر ۶ ساعت | اجرای ربات و dispatch مجدد خودش؛ concurrency گروه `bot-host` |
+| Deploy Worker | `deploy-worker.yml` | فقط دستی | آپلود `worker/tcp-test.js` + ثبت secret + health check |
+| **Monthly purge (جدید)** | `monthly-purge.yml` | **هر ماه روز ۱ ساعت ۳ بامداد UTC + دستی** | `python -m py_compile bot/*.py scripts/*.py` سپس `scripts/monthly_purge.py` — حذف کانفیگ‌های بدون تست سالمِ ۳۰ روز اخیر + `posted:`/`iran:` وابسته + بازسازی فهرست سالم |
+
+- ری‌استارت ربات بعد از هر تغییر کد: `GITHUB_CANCEL_WORKFLOW_RUN` روی run فعالِ `bot-host` سپس `GITHUB_CREATE_A_WORKFLOW_DISPATCH_EVENT` روی `bot-host.yml` (ref=main). بدون dispatch دستی، کد جدید در پرش بعدی زنجیره (حداکثر ~۶ ساعت) اعمال می‌شود.
 
 ## ۵. قوانین کسب‌وکار
-- **سهمیهٔ هفتگی** = `۱ + div(زیرمجموعه‌های معتبر,۲) − مصرف هفته`؛ هفته شنبه تا جمعه، وقت تهران (`week_key`).
-- زیرمجموعهٔ معتبر: اولین‌بار با لینک دعوت آمده، قبلاً ثبت‌نشده، و `used_total ≥ 1` و `qualified_at` ست شده. سقف دعوت روزانه ۱۰. خوددعوتی ممنوع.
-- محدودیت نرخ: اکشن‌ها ۱۵ در ۶۰ ثانیه؛ پشتیبانی ۲ پیام در ساعت؛ تست روزانه ۳ و برای هر کانفیگ هر ۲۴ ساعت یک‌بار.
-- **ارسال خودکار**: حالت جدید `h5` = هر ۵ ساعت (پیش‌فرض جدید)؛ `weekly` / `d3` / `off` همچنان معتبر. کلید KV `post:mode`، کلید `auto_post`. هر کانفیگ تا ۷ روز دوباره پست نمی‌شود. همیشه تست مجدد قبل از ارسال.
-- **اولویت انتخاب کانفیگ**: در دریافت ربات ابتدا امتیاز پروتکل/پورت، سپس کشورهای `PRIORITY_COUNTRIES` و رأی‌های موفق ایران؛ در اسکریپت‌های ارسال ابتدا کشور اولویت‌دار، سپس امتیاز پروتکل/پورت و تازه‌ترین تست.
-- **گزارش اتصال ایران**: دکمه‌های `✅ وصل شدم (از ایران)` / `❌ وصل نشدم` زیر هر کارت؛ فقط برای کانفیگ‌های تحویل‌گرفته‌شده مجاز؛ هر کاربر یک رأی (آخرین رأی برنده). نتیجه در کارت و پست کانال نمایش داده می‌شود.
-- **حجم**: سقف اعلامی هر کانفیگ ۵ گیگ (`DATA_CAP_GB=5`)؛ خط `data_line` کنار کارت/پست نمایش داده می‌شود («نامحدود ← سقف ۵ گیگ» یا حجم باقی‌مانده اگر بعداً از پنل خوانده شود).
-- دکمه‌های پست کانال: `t.me/ConfigBoostbot?start=cfg_{id}`.
+- **سهمیهٔ هفتگی** = `۱ + div(زیرمجموعه‌های معتبر,۲) − مصرف هفته`؛ هفته شنبه تا جمعه به وقت تهران (`quota.week_key`).
+- زیرمجموعهٔ معتبر: فقط با لینک دعوت (`?start=ref_{code}`) آمده، قبلاً ثبت‌نشده و `used_total ≥ 1` (یعنی حداقل ۱ کانفیگ گرفته). سقف ۱۰ دعوت روزانه؛ خوددعوتی ممنوع؛ «اولین دعوت‌کننده برنده».
+- محدودیت نرخ: اکشن‌ها ۱۵ در ۶۰ثانیه؛ پشتیبانی ۲ پیام/ساعت؛ تست روزانه ۳ و برای هر کانفیگ هر ۲۴ ساعت یک‌بار.
+- **دروازهٔ عضویت اجباری کانال (جدید ۲۰۲۶-۱۰-۱۰)**: `MembershipGateMiddleware` در `bot/handlers.py` قبل از هر پیام/دکمهٔ غیرادمین با `bot.get_chat_member(CHANNEL_ID, user)` عضویت را بررسی می‌کند؛ غیرعضو فقط پیام `GATE_TEXT` با دکمهٔ شیشه‌ای «عضویت» (لینک `Settings.channel_link` پیش‌فرض `https://t.me/GalaxiesDrop`) و دکمهٔ «تایید عضویت» (`gate:verify`) می‌بیند. تایید دوباره چک می‌کند؛ فقط عضو موفق می‌شود ورود. ادمین‌ها مستثنا هستند. اگر خودِ چک خطا بدهد (مثلاً ربات از کانال حذف شود) با سطح `warning`/`gate_check_error` در `admin_log` ثبت و اجازهٔ عبور داده می‌شود تا ربات برای همه قفل نشود — رفع علت واجب است.
+- **ارسال خودکار**: حالت `h5` (هر ۵ ساعت، پیش‌فرض) / `weekly` / `d3` / `off`؛ کلید `post:mode`، کلید `auto_post`. در اسکریپت‌ها هر کانفیگ تا ۷ روز دوباره پست نمی‌شود. همیشه تست مجدد قبل از ارسال؛ در صورت شکست تست، رکورد سالمِ کمتر از ۱ ساعت پیش پشتیبان است (در `_manual_post` متن پست حالا از همان رکورد سالم ساخته می‌شود — فیکس امروز).
+- **ارسال دستی ادمین (`admin:send`)**: اولویت با کانفیگ‌های ≥۷ روز پست‌نشده؛ **استثنا (جدید)**: اگر همه ظرف ۷ روز مصرف شده بودند، به‌جای پیام خالی «کاندیدایی نیست»، کهنه‌ترین کانفیگ ارسال‌شده انتخاب می‌شود. این ریشهٔ شکایت «از پنل ادمین کانفیگی به دستم نمی‌رسد» بود (به‌همراه باگ متن fallback).
+- **اولویت انتخاب**: دریافت ربات: امتیاز پروتکل/پورت (`_proto_port_score`: Reality+60، Trojan+45، VLESS+35، VMess+20؛ پورت 443+25، پورت‌های 8443/2053/2083/2087/2096/80 +12) ← کشورهای اولویت ← رأی‌های موفق ایران ← تصادفی. اسکریپت‌ها: کشور اولویت ← امتیاز پروتکل ← تازه‌ترین.
+- **گزارش اتصال ایران**: دکمه‌های `✅ وصل شدم` / `❌ وصل نشدم` زیر کارت؛ فقط برای کانفیگ تحویل‌گرفته‌شده؛ هر کاربر یک رأی (آخرین برنده). در کارت و پست کانال نمایش داده می‌شود. جریان ادمین `🧪 تست کانفیگ از ایران` با چرخش `admin:testcfg:seen` (۵۰ تا)؛ دکمهٔ ✅ پس از تست مجدد، ارسال یک‌مرحله‌ای دارد.
+- **حجم**: سقف اعلامی ۵ گیگ (`DATA_CAP_GB=5`) — فقط UI؛ اجرای واقعی نیازمند API پنل اختصاصی است.
+- **رابط کاربری ساده‌شده (جدید)**: `fa.test_card` فقط وضعیت/پروتکل/لوکیشن/پینگ/حجم/رأی ایران را نشان می‌دهد (هاست، پورت، IP، ISP، ساعت تست حذف شد). `fa.channel_post` هم بدون IP/ISP/پینگ ساخته می‌شود. این «جزئیات کاری که ما کردیم» به کاربر نهایی لازم نیست.
+- دکمه‌های پست کانال: `t.me/ConfigBoostbot?start=cfg_{id}` (پیش‌نمایش بدون ثبت سهمیه).
 
-## ۶. داده‌ها (Cloudflare KV)
-- `config:{sha256_20}` — رکورد: uri, protocol, host, port, security, ip, country/city/flag/country_code/isp, latency_ms, tested_at, tested_at_tehran, healthy, queued (و بعداً اختیاری `data_remaining_gb`)
-- `configs:healthy` — آرایهٔ شناسه‌های سالم (اعتبار ۷ روزه)
-- **`iran:{id}` — `{"ok":[tg_id,...],"fail":[tg_id,...]}` رأی‌های اتصال از ایران**
-- `admin:testcfg:seen` — چرخش آخرین ۵۰ کانفیگ نمایش‌داده‌شده در تست ادمین
-- `sources`, `refresh:cursor`, `posted:{id}`, `last_post`, `last_error`, `post:mode` (اکنون ممکن است `h5`), `auto_post`, `lock:weekly-post`, `healthy:summary`, `geo:{ip}` (کش ۲۴ ساعته از `ipwho.is`)
-- کلیدهای کاربران/ادمین‌لاگ/نرخ: در `bot/storage.py`
-- `data/subscription.txt` — کامیت‌شده توسط refresh.
+## ۶. اسکیمای کامل Cloudflare KV
+- `config:{id}` — رکورد کانفیگ: `uri, protocol, host, port, security, ip, country, city, flag, country_code, isp, latency_ms, tested_at, tested_at_tehran, healthy, queued` (+ `data_remaining_gb` اختیاری). `id = sha256(uri)[:20]`.
+- `configs:healthy` — آرایهٔ شناسه‌های سالم؛ فقط رکوردهای `healthy=true` با `tested_at` حداکثر ۷ روز (در `healthy_configs` اعتبارسنجی و هرس می‌شود).
+- `iran:{id}` — `{"ok":[tg_id],"fail":[tg_id]}`؛ `posted:{id}` — timestamp آخرین پست؛ `admin:testcfg:seen` — چرخش ۵۰تایی تست ادمین.
+- `user:{tg_id}` — رکورد کاربر (`_new_user` در storage.py: code, started_at, inviter, used_this_week, used_total, qualified_at, delivered_config_ids, delivered_this_week_ids, test_last_24h, test_day/test_day_count, rl (شمارنده‌های نرخ), uri_cache). `refcode:{code}` → tg_id؛ `invitee:{inviter}:{day}` → شمارش دعوت روزانه.
+- کلیدهای عملیاتی: `sources` (منابع؛ پیش‌فرض ۵ منبع داخل storage.py)، `refresh:cursor`، `last_post`، `last_error`، `post:mode`، `auto_post`، `lock:{name}` (قفل با TTL)، `geo:{ip}` (کش ۲۴ ساعته ipwho.is)، `admin_log` (حداکثر ۲۰۰ رکورد اخیر)، `healthy:summary`.
+- `data/subscription.txt` — لینک اشتراک بیس۶۴ که refresh کامیت می‌کند.
 
-## ۷. secretهای GitHub Actions (فقط نام)
-`BOT_TOKEN`, `ADMIN_IDS`, `CHANNEL_ID`, `GROUP_ID`, `BOT_USERNAME`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `WORKER_SECRET`
-غیر-secret ثابت: `KV_NAMESPACE_ID`, `WORKER_URL`.
-- ناهماهنگی `WORKER_SECRET` شناخته‌شده و بی‌اثرعملی است (fallback مستقیم). همسان‌سازی: مقدار دلخواه در Secrets و اجرای دستی `Deploy Cloudflare Worker`.
+## ۷. تغییرات ۲۰۲۶-۱۰-۱۰ (امروز — خط زمانی)
+1. باگ «فرمت کانفینگ معتبر نیست» که منوها را می‌شکست → `bot/menu_fix.py` (هندلر اولویت‌دار) — کامیت‌های `0899b68`, `79a333e`.
+2. ارسال فوری ادمین 401 می‌داد (WORKER_SECRET ناهماهنگ) → fallback سوکت مستقیم در `cards.direct_tcp_test` + دوبار تست و رکورد <۱ساعت در `_manual_post` — کامیت `6e93f2c8`.
+3. **ریشهٔ «از پنل ادمین کانفیگی نمی‌رسد»**: فیلتر ۷ روزهٔ `admin:send` کاندیدا را خالی می‌کرد + باگ متن پست در fallback → فیکس در `apply_fix3` (استثنا + `fresh = dict(record)`).
+4. **دروازهٔ عضویت اجباری کانال** با دکمه‌های عضویت/تایید + `MembershipGateMiddleware`.
+5. **ساده‌سازی کارت و پست** برای کاربر (حذف جزئیات فنی/زمان تست).
+6. **پاکسازی ماهانهٔ کانفیگ‌های غیرفعال >۳۰ روز** (`monthly-purge.yml`).
+7. `HANDOFF.md` بازنویسی شد به فایل واحد حاضر.
 
-## ۸. وضعیت تأییدشده (۲۰۲۶-۱۰-۱۰ ~۰۶:۲۳ UTC، کامیت `c4040fb`)
-- پست فوری موفق (کانفیگ `0a4161e35bbc5fa90b27` به هر دو مقصد)، refresh سبز (run #9: `healthy_total=43`)، ربات آنلاین با `pending_update_count=0`، Worker سالم (`/health → ok`).
+## ۸. عیب‌یابی سریع (Runbook)
+- ربات آفلاین → Actions → `Bot host (24/7 chain)` → Run workflow؛ یا صبر کن cron هر ۶ ساعت خودش شروع می‌کند. بعد از تغییر کد حتماً run فعال را cancel و dispatch تازه بزن (وگرنه کد قدیمی تا پرش بعدی زنجیره اجرا می‌شود).
+- پست ارسال نشد → لاگ `force-post`/`weekly-post`: `locked; skipping` (قفل ۵۰ دقیقه‌ای)، `not due` (KV هنوز حالت قدیمی → در پنل «ارسال هر ۵ ساعت» بزن)، `no_candidates` (اول refresh)، `force_retest_failed`، `http_4xx` تلگرام.
+- ارسال دستی ادمین شکست خورد → `admin_log`/`last_error`: `manual_retest_failed`، `manual_post_partial`، `gate_check_error`. وضعیت از `admin:status` (آخرین ارسال/خطا) هم قابل بررسی است.
+- کاربر می‌گوید «دکمه‌ها کار نمی‌کند» → `menu_fix` را چک کن (باید در start لاگ `menu_fix: menu-escape handler installed at position 0` بیاید).
+- دروازهٔ عضویت همه را بست → ببین ربات از کانال حذف نشده (`gate_check_error` در admin_log). ادمین‌ها همیشه مستثنا هستند.
+- KV خطا → `CLOUDFLARE_API_TOKEN` باید Workers KV Read/Write داشته باشد.
+- استقرار Worker → `Deploy Cloudflare Worker`؛ توقف یعنی `WORKER_SECRET` ثبت نشده. ناهماهنگی WORKER_SECRET عملاً بی‌اثر است (fallback سوکت) اما همسان‌سازی توصیه می‌شود: مقدار دلخواه در Secrets + اجرای دستی deploy.
+- رفرش منابع `fetch` خطا داد → احتمال rate-limit گیت‌هاب؛ منبع خراب را از پنل ادمین → منابع جایگزین کن.
+- **هرگز** secret/token در ریپو، لاگ عمومی یا پیام کانال قرار نگیرد؛ راز لو رفته باید چرخانده شود (یک مورد قبلاً رخ داد و چرخانده شد؛ PAT از deploy حذف شد).
 
-## ۹. محدودیت‌های صادقانه + کارهای باز
-1. **تست خودکار از آیپی ایران رایگان ممکن نیست**: Worker و GitHub Actions داخل ایران نیستند. راه‌حل عملی فعلی، جریان ادمین «🧪 تست کانفیگ از ایران» است تا دستگاه ایرانی ادمین معیار نهایی اتصال باشد؛ گزارش جمعی کاربران نیز حفظ شده است.
-2. **اجرای واقعی سقف ۵ گیگ**: کانفیگ‌های عمومی مالکیت ما نیستند و ترافیک آن‌ها قابل محدودکردن از سمت ما نیست؛ فعلاً سقف فقط در رابط کاربری اعلام می‌شود. اجرای واقعی فقط با API پنل اختصاصی (بند زیر) ممکن است.
-3. **آدرس + کلید API پنل اصلی** هنوز داده نشده (برای منبع اختصاصی و اعمال واقعی سقف حجم).
-4. **WORKER_SECRET ناهماهنگ** (بند ۷) — بی‌اثرعملی.
-5. **خطای fetch چهار منبع از پنج** در refresh اخیر (احتمال rate-limit گیت‌هاب) — بررسی در refreshهای بعدی؛ در صورت تداوم منبع جایگزین از پنل ادمین → منابع.
-6. **تست TCP ≠ تست تونل** — نیازمند طرح رایگان جدید در بلندمدت.
-7. **هاست جایگزین ربات**: فقط گزینه‌های رایگان بدون کارت؛ ترجیح همین زنجیرهٔ Actions.
+## ۹. ثبت نیازمندی‌های کارفرما (Requirements Register)
+1. رفع «ارسال نشدن کانفیگ» به‌طور کلی ← انجام شد (بندهای ۷.۲ و ۷.۳).
+2. بررسی پروتکل/پورت/IP/لوکیشن مناسب اتصال از ایران و تست عملی ← Research در HANDOFF قبلی: **VLESS+Reality+XTLS-Vision روی 443** اول، **Trojan+TLS روی 443** دوم؛ پورت‌های 8443/2053/2083/2087/2096/80 جایگزین. تست نهایی فقط با دستگاه/کاربر واقعی ایرانی (جریان 🧪 ادمین + رأی کاربران). ادعای تست رایگان از IP ایران ممنوع.
+3. باگ منوها پس از انتخاب ← انجام شد (`menu_fix.py`).
+4. پنل ادمین برای کانفیگ‌های متنوع/تست دستی/ارسال مستقیم ← موجود: `🧪 تست کانفیگ از ایران`، `افزودن کانفیگ`، `ارسال دستی`، `آمار`، `پاکسازی`، `منابع`، `سهمیه کاربر`، `زیرمجموعه‌ها`.
+5. مستندات صفر تا صد واحد برای تحویل به هر ایجنت دیگر ← همین فایل.
+6. **کاربر بتواند خودش کانفیگ بسازد و همهٔ دسترسی‌ها را بدهد** ← روش فعلی: ادمین URI می‌دهد (`افزودن کانفیگ`)، ربات تست و لوکیشن می‌گیرد. اگر پنل اختصاصی شد: API پنل + اعمال واقعی سقف ۵ گیگ + خواندن حجم باقی‌مانده.
+7. **حذف ماهانهٔ کانفیگ غیرفعال** ← انجام شد (`monthly-purge.yml`).
+8. **دروازهٔ عضویت اجباری کانال قبل از هر استفاده** ← انجام شد (بند ۵).
+9. **رابط کاربری ساده؛ بدون جزئیات اضافه (ساعت تست و…)** ← انجام شد (بند ۵).
+10. رایگان‌بودن مطلق و محرمانگی secretها ← قانون دائمی (بند ۱).
 
-## ۱۰. عیب‌یابی سریع
-- ربات آفلاین → Actions → `Bot host (24/7 chain)` → Run workflow (اگر زنجیره قطع شده، cron هر ۶ ساعت خودش شروع می‌کند).
-- پست ارسال نشد → لاگ `force-post`/`weekly-post`: `locked; skipping` (قفل ۵۰ دقیمه‌ای)، `not due` (اگر KV هنوز حالت قدیمی `weekly`/`d3` است — در پنل ادمین «ارسال هر ۵ ساعت» را بزنید)، `no_candidates` (اول refresh)، `force_retest_failed`، `http_4xx` تلگرام.
-- KV کار نمی‌کند → `CLOUDFLARE_API_TOKEN` باید دسترسی Workers KV Read/Write داشته باشد.
-- استقرار Worker → `Deploy Cloudflare Worker`؛ توقف یعنی `WORKER_SECRET` ثبت نیست.
-- هرگز secret/token در ریپو، لاگ عمومی یا پیام کانال قرار نگیرد.
+## ۱۰. مسیر انتقال به n8n (هنوز اجرا نشده)
+- مقصد/اعتبارنامه‌های n8n هنوز تأیید نشده (سوال باز). نقشهٔ پیشنهادی:
+  1. Worker تست TCP (`tcp-test.js`) را به‌صورت HTTP-Action در n8n تکرار بده (یا همان Worker را نگه دار و فقط orchestration را جابه‌جا کن).
+  2. گردش‌کارهای `refresh-sources` و `weekly-post` را به‌صورت Schedule Trigger + HTTP Request (Cloudflare KV REST API) بازنویسی کن؛ کلیدهای KV همان‌های بخش ۶ هستند.
+  3. ربات aiogram را می‌توان ۱:۱ نگه داشت (پایتون مستقل) یا با ربات تلگرام n8n جایگزین کرد؛ تا آن زمان همین زنجیرهٔ Actions اجراکنندهٔ رسمی است.
+  4. معیار انتقال: دو هفته اجرای موازی بی‌صدا، سپس توقف cronهای گیت‌هاب.
+  5. secretها باید در n8n به‌صورت Credentials رمزنگاری‌شده وارد شوند؛ هرگز در export/JSON.
 
-## ۱۱. تاریخچهٔ تصمیم‌ها
+## ۱۱. محدودیت‌های صادقانه + سوالات باز
+- تست رایگان از IP ایران ممکن نیست؛ ground truth = دستگاه ادمین + رأی کاربران.
+- سقف ۵ گیگ فقط اعلامی است؛ اجرای واقعی فقط با API پنل اختصاصی (آدرس/کلید هنوز داده نشده).
+- تست TCP ≠ تست تونل واقعی — نیازمند طرح رایگان جدید در بلندمدت.
+- مقصد/اعتبارنامه/روش استقرار n8n نامشخص.
+- آیا تغییرات امروز روی اجرای فعال ربات مستقر شد؟ (پس از dispatch دستی بله؛ اگر dispatch نزدی، در پرش بعدی زنجیره.)
+- چهار منبع از پنج در refresh اخیر fetch خطا دادند (rate-limit?) — پایش شود.
+- هاست جایگزین ربات: فقط گزینه‌های رایگان بدون کارت؛ ترجیح همین زنجیرهٔ Actions.
+
+## ۱۲. چک‌لیست تحویل به ایجنت جدید (دقیقهٔ اول)
+1. این فایل را کامل بخوان؛ سپس `bot/handlers.py` و `bot/storage.py` را برای جزئیات اجرا ببین.
+2. دسترسی GitHub (OAuth/PAT) و لیست secretهای Actions را بگیر (فقط نام‌ها؛ مقدارها نزد صاحب پروژه).
+3. وضعیت زنده: Actions → اجرای فعال `bot-host`، سبز بودن آخرین `refresh-sources` و `weekly-post`، `GET {WORKER_URL}/health`.
+4. از پنل ادمین `🧪 تست کانفیگ از ایران` را با اینترنت ایران بگیر؛ فقط در صورت اتصال واقعی ✅ بزن.
+5. هر تغییر کد: commit → `python -m py_compile bot/*.py scripts/*.py` (در گردش‌کار) → cancel + dispatch `bot-host`.
+6. پاسخ به کاربر فارسی، رایگان، بدون ادعای تست از ایران، بدون افشای secret.
+
+## ۱۳. تاریخچهٔ تصمیم‌ها
 - فاز آزمایشی: منو، سهمیهٔ هفتگی، رفرال، تست، پنل ادمین.
-- میزبانی رایگان: GitHub Actions زنجیره‌ای + Worker کلودفلر.
-- تست TCP دو سطحی: Worker + fallback مستقیم.
-- راز لو رفته چرخانده شد؛ PAT از deploy حذف شد.
-- **به‌روزرسانی ۲۰۲۶-۱۰-۱۰**: پست هر ۵ ساعت (`h5`)، اولویت کشوری DE/FR/NL/CA/US، گزارش اتصال ایران (`iran:{id}`)، نمایش سقف ۵ گیگ، منو/متن‌های جدید، بازنویسی HANDOFF.
-
-## ۱۲. مراحل بعدی
-1) هر روز از پنل ادمین گزینهٔ «🧪 تست کانفیگ از ایران» را با اینترنت ایران اجرا کن.
-2) فقط وقتی واقعاً از ایران وصل شدی دکمهٔ ✅ را بزن تا کانفیگ فوری به کانال و گروه برود.
-3) رفع خطای fetch منابع و جایگزینی منابع ضعیف در صورت تداوم.
-4) دریافت API پنل از صاحب پروژه برای منبع اختصاصی و اعمال واقعی سقف ۵ گیگ.
-5) در بلندمدت: تست تونل واقعی و اجرای واقعی سقف ۵ گیگ روی پنل اختصاصی.
-
-## ۱۳. استراتژی اتصال از ایران و تغییرات ۲۰۲۶-۱۰-۱۰
-- یافتهٔ پژوهشی ۲۰۲۶: بهترین انتخاب برای ایران **VLESS + Reality + XTLS-Vision روی پورت ۴۴۳** با SNI معتبر و fingerprint کروم است. انتخاب دوم **Trojan + TLS روی پورت ۴۴۳** است. پورت‌های استاندارد TLS و جایگزین شامل `443`، `8443`، `2053`، `2083`، `2087`، `2096` و `80` هستند.
-- تابع `_proto_port_score` در ربات و هر دو اسکریپت ارسال اضافه شد. Reality بیشترین امتیاز را می‌گیرد، سپس Trojan، VLESS و VMess؛ پورت ۴۴۳ و پورت‌های استاندارد بالا نیز امتیاز اضافه دارند.
-- جریان ادمین «🧪 تست کانفیگ از ایران» اضافه شد. دستگاه ایرانی ادمین معیار نهایی و ground truth اتصال است؛ چرخش با کلید `admin:testcfg:seen` انجام می‌شود و دکمهٔ ✅ کانفیگ موفق را یک‌مرحله‌ای پس از تست مجدد به کانال و گروه می‌فرستد.
-- زمان تست از کارت کاربر و متن کانال حذف شد و واژهٔ «سهمیه» در متن‌های کاربرمحور با «کانفیگ رایگان» بازنویسی شد.
-- قانون رفرال: هر ۲ زیرمجموعهٔ واجد شرایط، ۱ کانفیگ رایگان هفتگی با حجم اعلامی ۵ گیگ اضافه می‌کند.
-- دکمه‌های جدید پنل ادمین: تست کانفیگ از ایران، آمار کانفیگ‌ها و پاکسازی کانفیگ‌های مرده.
-- `bot/cards.py` اکنون پارامتر `security` را برای VLESS/Trojan از query و برای VMess از فیلدهای `tls` یا `security` تشخیص می‌دهد و در رکورد ذخیره می‌کند.
-- اقدام روزانه: تست را از اینترنت ایران انجام بده و فقط در صورت اتصال واقعی از ایران دکمهٔ ✅ را بزن.
-
-
-## 15. Fix: manual send failing (2026-10-10)
-- Root cause: bot re-test called only the Worker; WORKER_SECRET mismatch -> 401 -> manual_retest_failed in last_error -> the admin 'send now' button never posted. Scripts were green because they have direct_test fallback; the bot had none.
-- Fix: direct_tcp_test fallback in bot/cards.py tcp_test + two retries and fresh-record (<1h) fallback in _manual_post (bot/handlers.py).
-- Lesson: every test path needs a direct fallback; aligning WORKER_SECRET with the deployed Worker is now optional, not required.
+- میزبانی رایگان: GitHub Actions زنجیره‌ای + Worker کلودفلر (بدون VPS/کارت).
+- تست TCP دو سطحی: Worker + fallback مستقیم؛ درس امروز: «هر مسیر تستی fallback لازم دارد».
+- پست هر ۵ ساعت (`h5`)، اولویت کشوری DE/FR/NL/CA/US، گزارش اتصال ایران (`iran:{id}`)، سقف اعلامی ۵ گیگ.
+- ۲۰۲۶-۱۰-۱۰: دروازهٔ عضویت کانال، فیکس ارسال دستی ادمین، ساده‌سازی کارت، پاکسازی ماهانه، این فایل واحد.

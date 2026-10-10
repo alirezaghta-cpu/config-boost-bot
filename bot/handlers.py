@@ -80,6 +80,86 @@ class ActionRateMiddleware(BaseMiddleware):
         return await handler(event, data)
 
 
+CHANNEL_JOIN_URL = "https://t.me/GalaxiesDrop"
+
+
+def join_gate_keyboard(settings: Settings) -> InlineKeyboardMarkup:
+    link = (getattr(settings, "channel_link", "") or CHANNEL_JOIN_URL).strip()
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=fa.BTN_JOIN, url=link)],
+            [InlineKeyboardButton(text=fa.BTN_JOIN_CONFIRM, callback_data="gate:verify")],
+        ]
+    )
+
+
+async def channel_member_status(bot: Any, ctx: AppContext, user_id: int) -> bool | None:
+    """True=عضو، False=عضو نیست، None=بررسی ناموفق (اجازه عبور + لاگ)."""
+    if bot is None:
+        return None
+    try:
+        member = await bot.get_chat_member(ctx.settings.channel_id, int(user_id))
+    except Exception as exc:
+        logging.warning("membership check failed for %s: %s", user_id, type(exc).__name__)
+        try:
+            await ctx.storage.append_admin_log(
+                {
+                    "level": "warning",
+                    "event": "gate_check_error",
+                    "user": int(user_id),
+                    "error": type(exc).__name__,
+                }
+            )
+        except Exception:
+            pass
+        return None
+    return str(getattr(member, "status", "")) in {
+        "member",
+        "administrator",
+        "creator",
+        "restricted",
+    }
+
+
+class MembershipGateMiddleware(BaseMiddleware):
+    """هر فعالیت کاربر مشروط به عضویت کانال است؛ ادمین‌ها و دکمه تایید عضویت مستثنا."""
+
+    def __init__(self, ctx: AppContext) -> None:
+        self.ctx = ctx
+
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict[str, Any],
+    ) -> Any:
+        user = getattr(event, "from_user", None)
+        if user is None:
+            return await handler(event, data)
+        if user.id in self.ctx.settings.admin_ids:
+            return await handler(event, data)
+        if isinstance(event, CallbackQuery) and str(event.data or "").startswith("gate:"):
+            return await handler(event, data)
+        bot = data.get("bot") or getattr(event, "bot", None)
+        status = await channel_member_status(bot, self.ctx, user.id)
+        if status is not False:
+            return await handler(event, data)
+        if isinstance(event, CallbackQuery):
+            await event.answer(fa.GATE_NOT_MEMBER, show_alert=True)
+            try:
+                if event.message is not None:
+                    await event.message.answer(
+                        fa.GATE_TEXT, reply_markup=join_gate_keyboard(self.ctx.settings)
+                    )
+            except Exception:
+                pass
+        elif isinstance(event, Message):
+            await event.answer(
+                fa.GATE_TEXT, reply_markup=join_gate_keyboard(self.ctx.settings)
+            )
+        return None
+
+
 def main_keyboard(is_admin: bool) -> ReplyKeyboardMarkup:
     rows = [
         [KeyboardButton(text=fa.BTN_RECEIVE), KeyboardButton(text=fa.BTN_TEST)],
@@ -245,6 +325,21 @@ async def _register_start(user_id: int, payload: str | None, ctx: AppContext) ->
         user["started_at"] = datetime.now(quota.TEHRAN).isoformat()
         await storage.save_user(user)
     return user
+
+
+@router.callback_query(F.data == "gate:verify")
+async def gate_verify(callback: CallbackQuery, ctx: AppContext) -> None:
+    status = await channel_member_status(
+        getattr(callback, "bot", None), ctx, callback.from_user.id
+    )
+    if status is False:
+        await callback.answer(fa.GATE_NOT_MEMBER, show_alert=True)
+        return
+    await callback.answer(fa.GATE_OK)
+    await callback.message.answer(
+        fa.WELCOME,
+        reply_markup=main_keyboard(_is_admin(callback.from_user.id, ctx)),
+    )
 
 
 @router.message(CommandStart())
@@ -742,6 +837,7 @@ async def _manual_post(
         await ctx.storage.append_admin_log(
             {"level": "warning", "event": "manual_retest_fallback_record", "config_id": config_id_value}
         )
+        fresh = dict(record)
     else:
         if fresh:
             await ctx.storage.save_config(config_id_value, fresh)
@@ -781,13 +877,21 @@ async def _manual_post(
 async def admin_send_select(callback: CallbackQuery, ctx: AppContext) -> None:
     if not await _admin_callback(callback, ctx):
         return
+    healthy = await ctx.storage.healthy_configs()
+    if not healthy:
+        await callback.answer(fa.ADMIN_NO_CANDIDATE, show_alert=True)
+        return
     candidates = []
-    for record in await ctx.storage.healthy_configs():
+    for record in healthy:
         if time.time() - await ctx.storage.posted_at(record["id"]) >= 7 * 86400:
             candidates.append(record)
     if not candidates:
-        await callback.answer(fa.ADMIN_NO_CANDIDATE, show_alert=True)
-        return
+        # استثناي مسير ادمين: قانون ۷ روزه بی‌اثر است؛ کهنه‌ترین ارسال‌شده انتخاب می‌شود
+        posted = []
+        for record in healthy:
+            posted.append((await ctx.storage.posted_at(record["id"]), record))
+        posted.sort(key=lambda item: item[0])
+        candidates = [record for _, record in posted]
     selected = random.choice(candidates)
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
