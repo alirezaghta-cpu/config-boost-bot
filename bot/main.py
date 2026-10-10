@@ -8,6 +8,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
+from bot import menu_fix
 from bot.config import load_config
 from bot.handlers import ActionRateMiddleware, AppContext, router
 from bot.storage import KVStorage
@@ -29,6 +30,7 @@ async def run() -> None:
     dispatcher = Dispatcher(storage=MemoryStorage())
     router.message.outer_middleware(ActionRateMiddleware(storage))
     router.callback_query.outer_middleware(ActionRateMiddleware(storage))
+    menu_fix.install()
     dispatcher.include_router(router)
     context = AppContext(settings=settings, storage=storage)
     try:
