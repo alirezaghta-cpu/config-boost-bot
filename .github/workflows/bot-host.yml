@@ -1,0 +1,53 @@
+name: Bot host (24/7 chain)
+
+on:
+  schedule:
+    - cron: '10 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: bot-host
+  cancel-in-progress: false
+
+jobs:
+  host:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run bot and chain next run
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          ADMIN_IDS: ${{ secrets.ADMIN_IDS }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+          GROUP_ID: ${{ secrets.GROUP_ID }}
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          KV_NAMESPACE_ID: 2cbd1ab46bd942809c89592830a94719
+          WORKER_URL: https://config-boost-test.configboost.workers.dev
+          WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
+          BOT_USERNAME: ${{ secrets.BOT_USERNAME }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          echo bot-host starting run ${{ github.run_id }}
+          timeout --signal=INT --kill-after=30s 20400 python -m bot.main
+          rc=$?
+          echo bot stopped rc=$rc - chaining next run
+          for i in 1 2 3; do
+            gh workflow run bot-host.yml --ref main && break
+            echo dispatch attempt $i failed
+            sleep 20
+          done
+          exit 0

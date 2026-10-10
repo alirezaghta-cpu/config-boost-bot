@@ -29,4 +29,5 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           KV_NAMESPACE_ID: 2cbd1ab46bd942809c89592830a94719
           WORKER_URL: https://config-boost-test.configboost.workers.dev
+          WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
         run: python scripts/refresh_sources.py

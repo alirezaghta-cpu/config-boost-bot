@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""پست هفتگی کانال و گروه با قفل cron، تست مجدد و گزارش خطای فقط-ادمین."""
+"""پست هفتگی کانال و گروه با قفل cron، تست مجدد و گزارش خطای فقط ادمین."""
 
 from __future__ import annotations
 
@@ -222,9 +222,10 @@ def main() -> None:
             print("posting disabled")
             return
 
+        force = os.getenv("FORCE_POST", "").strip().lower() in {"1", "true", "yes"}
         last_post = kv_get_json("last_post", {}) or {}
         last_ts = float(last_post.get("ts", 0) or 0)
-        if not is_post_due(mode, last_ts):
+        if not force and not is_post_due(mode, last_ts):
             print("not due")
             return
 
@@ -251,13 +252,19 @@ def main() -> None:
             notify_admin(fa.CRON_NO_CONFIG_ADMIN)
             return
 
-        selected = random.choice(candidates)
-        tcp = worker_retest(str(selected["host"]), int(selected["port"]))
-        if not (tcp.get("ok") and tcp.get("ip")):
+        candidates.sort(key=lambda item: float(item.get("tested_at", 0) or 0), reverse=True)
+        selected = None
+        tcp = {"ok": False}
+        for candidate in candidates[:5]:
+            tcp = worker_retest(str(candidate["host"]), int(candidate["port"]))
+            if tcp.get("ok") and tcp.get("ip"):
+                selected = candidate
+                break
+        if selected is None:
             notify_admin(fa.POST_TEST_FAILED_ADMIN)
             kv_put_json(
                 "last_error",
-                {"ts": time.time(), "event": "weekly_retest_failed", "config_id": selected["id"]},
+                {"ts": time.time(), "event": "weekly_retest_failed", "config_id": candidates[0]["id"]},
             )
             return
 

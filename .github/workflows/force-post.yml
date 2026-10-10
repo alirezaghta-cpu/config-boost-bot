@@ -1,32 +1,29 @@
-name: Weekly Telegram post
+name: Force post (channel + group)
 
 on:
-  schedule:
-    - cron: "30 14 * * 5"
   workflow_dispatch:
-    inputs:
-      force:
-        description: "Force send now (ignore schedule/last-post check)"
-        type: boolean
-        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: weekly-telegram-post
+  group: force-post
   cancel-in-progress: false
 
 jobs:
   post:
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - name: Re-test and send one config
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Syntax check all scripts
+        run: python -m py_compile scripts/force_post.py scripts/weekly_post.py scripts/refresh_sources.py
+      - name: Retest freshest configs and post
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           ADMIN_IDS: ${{ secrets.ADMIN_IDS }}
@@ -38,5 +35,4 @@ jobs:
           KV_NAMESPACE_ID: 2cbd1ab46bd942809c89592830a94719
           WORKER_URL: https://config-boost-test.configboost.workers.dev
           WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
-          FORCE_POST: ${{ github.event.inputs.force || 'false' }}
-        run: python scripts/weekly_post.py
+        run: python scripts/force_post.py

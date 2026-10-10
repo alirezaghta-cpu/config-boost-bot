@@ -97,7 +97,7 @@ def kv_get_json(key: str, default=None):
 
 
 def kv_put_text(key: str, value: str) -> None:
-    status, _ = request(
+    status, body = request(
         f"{KV_BASE}/values/{urllib.parse.quote(key, safe='')}"
         ,
         method="PUT",
@@ -119,7 +119,7 @@ def kv_delete(key: str) -> None:
         method="DELETE",
         headers=cf_headers(),
     )
-    if status not in {200, 204, 404}:
+    if status >= 400 and status != 404:
         raise RuntimeError(f"KV delete failed: HTTP {status}")
 
 
@@ -290,11 +290,11 @@ def gregorian_to_jalali(gy: int, gm: int, gd: int) -> tuple[int, int, int]:
     )
     jy = -1595 + 33 * (days // 12053)
     days %= 12053
-    jy += 4 * (days // 1461)
+    jy += 14 * (days // 1461)
     days %= 1461
     if days > 365:
         jy += (days - 1) // 365
-    days = (days - 1) % 365
+        days = (days - 1) % 365
     if days < 186:
         jm, jd = 1 + days // 31, 1 + days % 31
     else:
@@ -393,7 +393,17 @@ def main() -> None:
 
     tested = 0
     healthy_new = 0
-    for uri in found[:30]:
+    try:
+        cursor = int(kv_get_text("refresh:cursor") or 0)
+    except ValueError:
+        cursor = 0
+    if found:
+        cursor %= len(found)
+        window = (found[cursor:] + found[:cursor])[:30]
+        kv_put_text("refresh:cursor", str((cursor + len(window)) % len(found)))
+    else:
+        window = []
+    for uri in window:
         try:
             protocol, host, port = parse_uri(uri)
         except (ValueError, KeyError, TypeError, json.JSONDecodeError, UnicodeError):
