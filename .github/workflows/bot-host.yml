@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '10 */6 * * *'
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/bot-host.yml'
 
 permissions:
   actions: write
@@ -24,7 +29,7 @@ jobs:
           python-version: '3.12'
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Apply pending code patch (fix4: admin cards show URI) and persist
+      - name: 'Apply pending code patch fix4 (admin cards show URI) and persist'
         run: |
           python scripts/apply_fix4.py || echo "patch script skipped (unexpected state)"
           python -m py_compile bot/handlers.py bot/locales/fa.py
