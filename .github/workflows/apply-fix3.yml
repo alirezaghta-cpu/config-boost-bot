@@ -22,7 +22,7 @@ jobs:
       - name: Apply patches
         run: python scripts/apply_fix3.py
       - name: Syntax check all bot modules and scripts
-        run: python -m py_compile bot/*.py scripts/*.py
+        run: python -m py_compile bot/*.py bot/locales/*.py scripts/*.py
       - name: Commit results
         run: |
           git config user.name "github-actions[bot]"
