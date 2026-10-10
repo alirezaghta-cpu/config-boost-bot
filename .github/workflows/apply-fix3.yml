@@ -1,0 +1,32 @@
+name: Apply fix3 (gate + admin send + handoff)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-fix3
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply patches
+        run: python scripts/apply_fix3.py
+      - name: Syntax check all bot modules and scripts
+        run: python -m py_compile bot/*.py scripts/*.py
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41498282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "feat: channel join gate + admin send fix + simplified card + single-file HANDOFF"
+          git push
