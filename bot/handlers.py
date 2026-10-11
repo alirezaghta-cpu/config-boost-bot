@@ -32,7 +32,7 @@ from bot.cards import ConfigParseError, format_test_card, inspect_uri, make_qr_p
 from bot.config import Settings
 from bot.locales import fa
 from bot.storage import KVStorage
-from bot.util import config_id, escape_code, jalali_datetime, redact_text
+from bot.util import config_id, config_identity, escape_code, jalali_datetime, redact_text
 
 router = Router(name="config_boost")
 
@@ -652,7 +652,20 @@ async def _admin_callback(callback: CallbackQuery, ctx: AppContext) -> bool:
 
 async def _pick_admin_test_config(ctx: AppContext, exclude: set) -> dict | None:
     healthy = await ctx.storage.healthy_configs()
-    fresh = [r for r in healthy if str(r.get("id")) not in exclude]
+    excluded_ids = {str(item) for item in exclude}
+    # Identity-level exclusion: the same provider republishes an identical
+    # config on a new IP, which reads as a duplicate to the tester.
+    seen_idents = {
+        config_identity(str(record.get("uri") or ""))
+        for record in healthy
+        if str(record.get("id")) in excluded_ids
+    }
+    fresh = [
+        record
+        for record in healthy
+        if str(record.get("id")) not in excluded_ids
+        and config_identity(str(record.get("uri") or "")) not in seen_idents
+    ]
     pool = fresh or healthy
     if not pool:
         return None
