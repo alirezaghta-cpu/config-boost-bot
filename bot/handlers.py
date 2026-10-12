@@ -254,6 +254,48 @@ async def iran_vote(callback: CallbackQuery, ctx: AppContext) -> None:
     )
 
 
+@router.callback_query(F.data.startswith("cfg:broken:"))
+async def broken_config_report(callback: CallbackQuery, ctx: AppContext) -> None:
+    """کاوشگری کاربران: گزارش کانفیگ خراب در ازای ۱ کانفیگ اضافه در همان هفته."""
+    config_id = callback.data.split(":", 2)[2]
+    record = await ctx.storage.get_config(config_id)
+    if not record:
+        await callback.answer(fa.CONFIG_NOT_FOUND, show_alert=True)
+        return
+
+    user = await ctx.storage.ensure_user(callback.from_user.id)
+    reports = user.get("broken_reports")
+    if not isinstance(reports, dict):
+        reports = {}
+    if config_id in reports:
+        await callback.answer(fa.BUG_REWARD_COOLDOWN, show_alert=True)
+        return
+
+    reports[config_id] = int(time.time())
+    user["broken_reports"] = reports
+    # یک کانفیگ اضافه در همین هفته، بدون دست‌زدن به فرمول سهمیه
+    user["used_this_week"] = max(0, int(user.get("used_this_week") or 0) - 1)
+    user["bug_rewards"] = int(user.get("bug_rewards") or 0) + 1
+    await ctx.storage.save_user(user)
+
+    counter = await ctx.storage.get_json("reports:counter", {}) or {}
+    count = int(counter.get(config_id) or 0) + 1
+    counter[config_id] = count
+    await ctx.storage.put_json("reports:counter", counter)
+
+    await ctx.storage.append_admin_log({
+        "level": "warning",
+        "event": "bug_report",
+        "config_id": config_id,
+        "user": callback.from_user.id,
+        "reports_total": count,
+    })
+    await callback.answer(fa.BUG_REWARD_OK)
+    await callback.message.answer(fa.BUG_REPORT_ADMIN.format(
+        name=callback.from_user.full_name or str(callback.from_user.id),
+        uid=callback.from_user.id, cid=config_id, count=count))
+
+
 def admin_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[

@@ -290,6 +290,8 @@ def channel_buttons(config_id: str) -> dict:
         "inline_keyboard": [
             [{"text": fa.BTN_TEST, "url": link}],
             [{"text": fa.BTN_COPY_FROM_BOT, "url": link}],
+            # کاوشگری کاربران: گزارش کانفیگ خراب ↔ پاداش (کوئری در ربات پردازش می‌شود)
+            [{"text": fa.BTN_REPORT_BROKEN, "callback_data": f"cfg:broken:{config_id}"}],
         ]
     }
 
